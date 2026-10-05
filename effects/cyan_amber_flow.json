@@ -1,0 +1,45 @@
+{
+  "name": "Cyan Amber Flow",
+  "model": "H7062",
+  "palette": [
+    [
+      0,
+      255,
+      255
+    ],
+    [
+      255,
+      100,
+      0
+    ],
+    [
+      0,
+      255,
+      255
+    ],
+    [
+      255,
+      100,
+      0
+    ],
+    [
+      0,
+      255,
+      255
+    ],
+    [
+      255,
+      100,
+      0
+    ]
+  ],
+  "motionTemplate": "Rainbow",
+  "verified": true,
+  "command": [
+    "owABAwIBKQAAAAYCAeefAQAUFPc=",
+    "owED6goGAP///2QAAP///2QAAEc=",
+    "o/////9kABAA9AAAgAMAAAAAAKA=",
+    "MwUEJgoAAAAAAAAAAAAAAAAAAB4="
+  ],
+  "verification": "User confirmed physical cyan and amber animation after LAN upload."
+}

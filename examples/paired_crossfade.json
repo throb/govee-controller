@@ -1,0 +1,361 @@
+{
+  "version": 1,
+  "name": "Paired Crossfade 1-6 2-5 3-4",
+  "duration": 9,
+  "beats": [],
+  "tracks": [
+    {
+      "name": "Flood 1",
+      "keys": [
+        {
+          "id": "483d56ea-42be-4e7a-8f3a-8a0e8df2a4c2",
+          "t": 0,
+          "on": true,
+          "intensity": 100,
+          "color": [
+            255,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "id": "c85340b6-bbdd-4cb2-bc4f-b2ac0efb30b9",
+          "t": 3,
+          "on": true,
+          "intensity": 0,
+          "color": [
+            255,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "id": "7d37cfb6-9a1d-4f24-bddc-4794c95055b0",
+          "t": 6,
+          "on": true,
+          "intensity": 0,
+          "color": [
+            255,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "id": "7760abb9-b980-4f51-9f9d-30410f235483",
+          "t": 9,
+          "on": true,
+          "intensity": 100,
+          "color": [
+            255,
+            0,
+            0
+          ],
+          "ease": "linear"
+        }
+      ]
+    },
+    {
+      "name": "Flood 2",
+      "keys": [
+        {
+          "id": "4a36c14b-ce11-49f6-8d3c-8f942b1f80cd",
+          "t": 0,
+          "on": true,
+          "intensity": 0,
+          "color": [
+            255,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "id": "bec058cc-272c-4501-8d8f-52b0f79a6733",
+          "t": 3,
+          "on": true,
+          "intensity": 100,
+          "color": [
+            255,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "id": "9328a2db-4608-4147-8395-dfcdcfc41b89",
+          "t": 6,
+          "on": true,
+          "intensity": 0,
+          "color": [
+            255,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "id": "7b3de8c7-893c-4b1a-beed-766c66098658",
+          "t": 9,
+          "on": true,
+          "intensity": 0,
+          "color": [
+            255,
+            0,
+            0
+          ],
+          "ease": "linear"
+        }
+      ]
+    },
+    {
+      "name": "Flood 3",
+      "keys": [
+        {
+          "id": "06588c3c-91ca-41a5-88f7-25132030be72",
+          "t": 0,
+          "on": true,
+          "intensity": 0,
+          "color": [
+            255,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "id": "0239ccdc-9fc8-4469-8497-63f3d4645cf5",
+          "t": 3,
+          "on": true,
+          "intensity": 0,
+          "color": [
+            255,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "id": "62bb995c-0091-4329-a62b-f7251ccc7601",
+          "t": 6,
+          "on": true,
+          "intensity": 100,
+          "color": [
+            255,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "id": "a056144c-680b-4e83-8d1f-48f1ad539e55",
+          "t": 9,
+          "on": true,
+          "intensity": 0,
+          "color": [
+            255,
+            0,
+            0
+          ],
+          "ease": "linear"
+        }
+      ]
+    },
+    {
+      "name": "Flood 4",
+      "keys": [
+        {
+          "id": "0f485259-b75e-4540-8621-ca6aa737b26a",
+          "t": 0,
+          "on": true,
+          "intensity": 0,
+          "color": [
+            255,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "id": "a9da8710-501f-479b-82d6-98e49031cae5",
+          "t": 3,
+          "on": true,
+          "intensity": 0,
+          "color": [
+            255,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "id": "c5d089c3-b7e6-4ffb-85ce-7e185f58521a",
+          "t": 6,
+          "on": true,
+          "intensity": 100,
+          "color": [
+            255,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "id": "c45ce426-de9e-4343-8d5e-6816aae423f0",
+          "t": 9,
+          "on": true,
+          "intensity": 0,
+          "color": [
+            255,
+            0,
+            0
+          ],
+          "ease": "linear"
+        }
+      ]
+    },
+    {
+      "name": "Flood 5",
+      "keys": [
+        {
+          "id": "812ba692-4c10-476b-be6f-3686c3e6f898",
+          "t": 0,
+          "on": true,
+          "intensity": 0,
+          "color": [
+            255,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "id": "4f8d77ef-01e1-48ec-b32a-7295d97aac89",
+          "t": 3,
+          "on": true,
+          "intensity": 100,
+          "color": [
+            255,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "id": "686e7a29-98ac-43a6-bfd3-bf795edc7e4c",
+          "t": 6,
+          "on": true,
+          "intensity": 0,
+          "color": [
+            255,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "id": "0899bb54-8e46-4082-a904-610c13bd42e5",
+          "t": 9,
+          "on": true,
+          "intensity": 0,
+          "color": [
+            255,
+            0,
+            0
+          ],
+          "ease": "linear"
+        }
+      ]
+    },
+    {
+      "name": "Flood 6",
+      "keys": [
+        {
+          "id": "e9fa0db5-6e8e-403e-bdd2-bcfd295a1b4e",
+          "t": 0,
+          "on": true,
+          "intensity": 100,
+          "color": [
+            255,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "id": "b91d9ca4-691f-4ba3-bb16-b1a182944bd4",
+          "t": 3,
+          "on": true,
+          "intensity": 0,
+          "color": [
+            255,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "id": "f2f92061-10d9-4bc9-bf57-8db94426d6f2",
+          "t": 6,
+          "on": true,
+          "intensity": 0,
+          "color": [
+            255,
+            0,
+            0
+          ],
+          "ease": "linear"
+        },
+        {
+          "id": "f25f1ec1-0257-4689-94a9-202f950c6a1d",
+          "t": 9,
+          "on": true,
+          "intensity": 100,
+          "color": [
+            255,
+            0,
+            0
+          ],
+          "ease": "linear"
+        }
+      ]
+    }
+  ],
+  "layout": {
+    "fixtures": [
+      {
+        "x": 55.72093023255814,
+        "y": 80.4779411764706,
+        "angle": 0
+      },
+      {
+        "x": 64.61843409316155,
+        "y": 54.00568181818181,
+        "angle": 0
+      },
+      {
+        "x": 50.44598612487612,
+        "y": 33.096590909090914,
+        "angle": 0
+      },
+      {
+        "x": 33.30029732408325,
+        "y": 30.59659090909091,
+        "angle": 0
+      },
+      {
+        "x": 20.614469772051535,
+        "y": 38.55113636363636,
+        "angle": 0
+      },
+      {
+        "x": 31.91278493557978,
+        "y": 80.14204545454545,
+        "angle": 0
+      }
+    ]
+  },
+  "loop": true
+}
