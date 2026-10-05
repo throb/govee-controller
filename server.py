@@ -1,4 +1,5 @@
 import json
+import sys
 import socket
 import threading
 import time
@@ -411,6 +412,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if not self.allowed(): self.respond(403, {'error':'Origin rejected'}); return
         path = urlparse(self.path).path
+        if path == '/api/mcp/setup':
+            self.respond(200, {'config':{'mcpServers':{'light-bridge':{'command':sys.executable, 'args':[str(ROOT / 'mcp_server.py')]}}}}); return
         if path == '/api/instance': self.respond(200, {'app':APP_ID, 'instanceId':INSTANCE_ID, 'installationId':INSTALLATION_ID}); return
         if path == '/api/shows': self.respond(200, {'shows': SHOWS.list()}); return
         if path.startswith('/api/shows/'):
@@ -439,7 +442,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.bytes_response(200, (DATA / (name + '.audio')).read_bytes(), 'application/octet-stream')
             except (ValueError, OSError): self.respond(404, {'error':'Audio not found'})
             return
-        files = {'/': ('index.html','text/html; charset=utf-8'), '/app.js': ('app.js','text/javascript; charset=utf-8'), '/style.css': ('style.css','text/css; charset=utf-8'), '/timeline.js': ('timeline.js','text/javascript; charset=utf-8')}
+        files = {'/mcp-guide': ('MCP_GUIDE.md','text/plain; charset=utf-8'), '/': ('index.html','text/html; charset=utf-8'), '/app.js': ('app.js','text/javascript; charset=utf-8'), '/style.css': ('style.css','text/css; charset=utf-8'), '/timeline.js': ('timeline.js','text/javascript; charset=utf-8')}
         if path not in files: self.respond(404, {'error':'Not found'}); return
         filename, mime = files[path]
         self.bytes_response(200, (ROOT / filename).read_bytes(), mime)

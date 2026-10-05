@@ -123,7 +123,7 @@ Do not expose this unauthenticated local app through a public tunnel or reverse 
 The MCP server ships in this repository as [`mcp_server.py`](mcp_server.py). It uses Python's standard library, requires no separate MCP package, and connects to the running Light Bridge app on `127.0.0.1:8765`.
 
 1. Start the app with `python launch.py`.
-2. Register the bundled server in your MCP client, using absolute paths to your Python executable and this checkout.
+2. Open **Settings → MCP** and copy the configuration into your MCP client. It uses the actual Python and script paths for this installation. The full tool guide is linked there too.
 3. Reconnect your client, then read the MCP resource `lightbridge://guide`.
 
 For Codex:

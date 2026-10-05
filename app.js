@@ -299,9 +299,16 @@ $('confirmHeads').onclick=async()=>{try{if(!$('observed').checked)throw Error('C
 
 function applyStatus(state){hardwareBusy=state.playing;const isTest=['calibration','cloud-calibration'].includes(state.mode);if(isTest&&state.playing){$('actionStatus').textContent=state.mode==='cloud-calibration'?`API head test running · ${state.frames} color commands accepted. Colors will hold, then restore.`:'LAN head test running…';$('calibrate').disabled=true}else if(!playing&&!starting)$('calibrate').disabled=!hasFlood();if(isTest&&!state.playing&&lastHardwareMode===state.mode)notice(state.error||(state.calibrationDone?'Head test finished. Starting controller state restored.':'Head test stopped.'),Boolean(state.error));lastHardwareMode=state.playing?state.mode:null;if(state.calibrationId){calibrationId=state.calibrationId;$('calibrationPanel').hidden=state.individualConfirmed;}if(state.calibrationId)$('calibrationStatus').textContent=state.calibrationDone?'Test finished. Confirm only if all six heads showed separate colors.':state.playing&&['calibration','cloud-calibration'].includes(state.mode)?'Test running…':'Test stopped before completion.';if(state.error){notice(state.error,true);if(playing)halt(false)}if(live&&!playing&&!starting&&!state.playing)live=false}
 
-function openSettings(firstRun=false){$('settingsTitle').textContent=firstRun?'Connect your lights':'Settings';$('settingsDialog').showModal();$('apiKey').focus()}
+async function settingsSection(section){
+ const mcp=section==='mcp';$('settingsApiPanel').hidden=mcp;$('settingsMcpPanel').hidden=!mcp;
+ $('settingsApiTab').setAttribute('aria-pressed',String(!mcp));$('settingsMcpTab').setAttribute('aria-pressed',String(mcp));
+ if(mcp){try{const setup=await api('/api/mcp/setup');$('mcpConfig').value=JSON.stringify(setup.config,null,2);$('copyMcpConfig').disabled=false;$('mcpSetupStatus').textContent='MCP server available · local stdio transport';}catch(error){$('mcpSetupStatus').textContent=error.message;$('copyMcpConfig').disabled=true;}}
+}
+$('settingsApiTab').onclick=()=>settingsSection('api');$('settingsMcpTab').onclick=()=>settingsSection('mcp');
+$('copyMcpConfig').onclick=async()=>{try{await navigator.clipboard.writeText($('mcpConfig').value);$('mcpSetupStatus').textContent='Configuration copied.';}catch(error){$('mcpConfig').focus();$('mcpConfig').select();$('mcpSetupStatus').textContent='Select and copy the configuration with Ctrl+C.';}};
+function openSettings(firstRun=false){settingsSection('api');$('settingsTitle').textContent=firstRun?'Connect your lights':'Settings';$('settingsDialog').showModal();$('apiKey').focus()}
 $('openSettings').onclick=()=>openSettings();
-$('skipSetup').onclick=()=>{$('settingsDialog').close();notice('Preview is ready. Enable LAN Control and use Find lights for local playback.');};
+$('skipSetup').onclick=()=>{$('settingsDialog').close();notice('Enable LAN Control and use Find lights for local playback.');};
 $('closeSettings').onclick=()=>$('settingsDialog').close();
 $('settingsDialog').onclick=event=>{if(event.target===$('settingsDialog'))$('settingsDialog').close()};
 function showCloud(state){

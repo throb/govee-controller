@@ -29,6 +29,15 @@ class SecurityTests(unittest.TestCase):
             self.assertEqual(response.headers['X-Frame-Options'],'DENY')
             self.assertEqual(response.headers['X-Content-Type-Options'],'nosniff')
             self.assertEqual(response.headers['Cache-Control'],'no-store')
+    def test_mcp_setup_and_guide(self):
+        with self.request('/api/mcp/setup') as response:
+            setup=json.load(response)
+        entry=setup['config']['mcpServers']['light-bridge']
+        self.assertEqual(entry, {'command':sys.executable,'args':[str(server.ROOT / 'mcp_server.py')]})
+        with self.request('/mcp-guide') as response:
+            self.assertEqual(response.status,200)
+            self.assertIn(b'lightbridge://guide',response.read())
+
     def test_stale_tabs_cannot_mutate_or_upload(self):
         with patch.object(server, 'PLAYER') as player:
             for path in ['/api/stop', '/api/save', '/api/audio']:
