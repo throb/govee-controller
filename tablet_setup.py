@@ -9,17 +9,28 @@ from urllib.parse import urlparse
 
 
 class TabletSetup:
-    def __init__(self, root, snapshot, move, identify, stop):
+    def __init__(self, root, snapshot, move, identify, stop, begin_identify=None, end_identify=None):
         self.root, self.snapshot, self.move, self.identify, self.stop = root, snapshot, move, identify, stop
         self.http = None
         self.token = None
         self.expires = 0
         self.lock = threading.RLock()
+        self.begin_identify = begin_identify
+        self.end_identify = end_identify
 
     def enable(self, addresses, host='0.0.0.0', port=8766):
         with self.lock:
             self.token = secrets.token_urlsafe(32)
             self.expires = time.time() + 8 * 3600
+            expires = self.expires
+            def expire():
+                with self.lock:
+                    if self.expires == expires and self.end_identify:
+                        try: self.end_identify()
+                        except (ValueError, OSError): pass  # Desktop Exit remains available to retry restoration.
+            expiry_timer = threading.Timer(8 * 3600, expire)
+            expiry_timer.daemon = True
+            expiry_timer.start()
             owner = self
             class Handler(BaseHTTPRequestHandler):
                 def log_message(self, *args): pass
@@ -46,6 +57,8 @@ class TabletSetup:
                         body=json.loads(self.rfile.read(size))
                         if self.path=='/move': result=owner.move(body)
                         elif self.path=='/identify': result=owner.identify(body)
+                        elif self.path=='/identify/start' and owner.begin_identify: result=owner.begin_identify()
+                        elif self.path=='/identify/end' and owner.end_identify: result=owner.end_identify()
                         elif self.path=='/stop': result=owner.stop()
                         else: self.reply(404,{'error':'Not found'});return
                         self.reply(200,result)
@@ -58,6 +71,7 @@ class TabletSetup:
 
     def disable(self):
         with self.lock:
+            if self.end_identify:self.end_identify()
             self.token=None;self.expires=0
             if self.http:self.http.shutdown();self.http.server_close();self.http=None
         return {'enabled':False}

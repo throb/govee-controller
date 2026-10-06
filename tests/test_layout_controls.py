@@ -27,14 +27,34 @@ class LayoutTests(unittest.TestCase):
         result=self.layout.move({'projectId':'test','key':'device:bar','x':80,'y':20,'revision':0})
         self.assertEqual(result['revision'],1);self.assertEqual(json.loads(self.path.read_text())['tracks'],self.p['tracks'])
         with self.assertRaisesRegex(ValueError,'another screen'):self.layout.move({'projectId':'test','key':'track:0','x':40,'y':30,'revision':0})
-    def test_identify_refuses_playing_show(self):
-        self.player.status.return_value={'playing':True}
-        with self.assertRaisesRegex(ValueError,'Pause'):self.layout.identify({'key':'track:0'})
-        self.net.send.assert_not_called()
-    def test_identify_restores_even_when_send_fails(self):
+    def test_mode_darkens_all_and_only_enables_selected(self):
+        self.controls.device.side_effect=lambda identifier:{'id':identifier,'ip':'192.0.2.1' if identifier=='flood' else '192.0.2.2'}
+        self.net.fresh_state.return_value={'onOff':0,'brightness':40}
+        self.layout.begin_identify()
+        self.player.stop.assert_called_once()
+        self.assertEqual(len(self.layout.identify_states),2)
+        self.net.send.reset_mock()
+        self.layout.identify({'key':'track:3'})
+        calls=[c.args for c in self.net.send.call_args_list]
+        on=[c for c in calls if c[1]=='turn' and c[2]['value']==1]
+        self.assertEqual(on,[('192.0.2.1','turn',{'value':1})])
+        from effect_lab import encode_timeline_frame
+        colors=[[0,0,0] for _ in range(6)];colors[3]=[255,255,255]
+        self.assertIn(('192.0.2.1','ptReal',{'command':encode_timeline_frame(colors)}),calls)
+        self.assertEqual(self.layout.identify_key,'track:3')
+        self.net.restore.assert_not_called()
+        self.layout.end_identify()
+        self.assertEqual(self.net.restore.call_count,2)
+        self.assertFalse(self.player.identifying)
+    def test_blackout_failure_restores_snapshots(self):
+        self.net.fresh_state.return_value={'onOff':0,'brightness':40}
         self.net.send.side_effect=OSError('network failed')
-        with self.assertRaises(OSError):self.layout.identify({'key':'track:0'})
+        with self.assertRaises(OSError):self.layout.begin_identify()
         self.net.restore.assert_called_once()
+    def test_preflight_failure_does_not_blackout(self):
+        self.net.fresh_state.side_effect=ValueError('No reply')
+        with self.assertRaises(ValueError):self.layout.begin_identify()
+        self.net.send.assert_not_called()
     def test_extra_layout_validation(self):
         validate_project(self.p)
         self.p['layout']['lights'][0]['x']=float('nan')

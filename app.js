@@ -422,6 +422,7 @@ function renderTabletPairing(urls){
  const update=()=>{const qr=qrcode(0,'M');qr.addData(select.value);qr.make();image.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(qr.createSvgTag({cellSize:6,margin:24,scalable:true}));link.href=select.value;};select.onchange=update;update();host.append(label,image,hint,link);
 }
 $('enableTablet').onclick=async()=>{try{const result=await api('/api/tablet/enable',{});renderTabletPairing(result.urls);$('tabletStatus').textContent='Pairing enabled for 8 hours. Anyone with this code on your network can arrange and identify lights. Keep it private.';}catch(e){$('tabletStatus').textContent=e.message}};
+$('exitIdentify').onclick=async()=>{try{await api('/api/layout/identify/end',{});$('tabletStatus').textContent='Identify mode ended; controller states restored.';}catch(e){$('tabletStatus').textContent=e.message}};
 $('disableTablet').onclick=async()=>{try{await api('/api/tablet/disable',{});$('tabletLinks').replaceChildren();$('tabletStatus').textContent='iPad access disabled.';}catch(e){$('tabletStatus').textContent=e.message}};
 setInterval(async()=>{if(placementDrag||extraPlacementDrag)return;try{const remote=await api('/api/layout');if(remote.projectId!==(project.layoutId||project.libraryShowId||project.name)||remote.revision<=(project.layoutRevision||0))return;for(const f of remote.lights){if(f.key.startsWith('track:')){const i=Number(f.key.slice(6));if(project.layout?.fixtures[i])Object.assign(project.layout.fixtures[i],{x:f.x,y:f.y});}else{const local=project.layout?.lights?.find(l=>l.deviceId===f.deviceId);if(local)Object.assign(local,{x:f.x,y:f.y});}}project.layoutRevision=remote.revision;renderStage();}catch{}},3000);
 function renderStage(){
@@ -506,7 +507,7 @@ let timelineResizeFrame;window.addEventListener("resize",()=>{cancelAnimationFra
 
 document.addEventListener('keydown',e=>{if(location.hash!=='#advanced'||e.code!=='Space'||e.repeat||e.ctrlKey||e.metaKey||e.altKey||e.shiftKey||e.target.closest('input,textarea,select,[contenteditable="true"],dialog'))return;e.preventDefault();if(playing)halt(false);else if(!starting)play()});
 
-// Vendored qrcode-generator 2.0.4 (MIT). Kept local; pairing tokens never leave this browser.
+// Vendored qrcode-generator 2.0.4 (MIT). Kept local; pairing tokens are never sent to external QR services.
 //---------------------------------------------------------------------
 //
 // QR Code Generator for JavaScript

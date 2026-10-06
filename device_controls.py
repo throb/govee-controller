@@ -97,6 +97,7 @@ class DeviceControls:
         value = body.get('value')
         validate_value(cap['parameters'], value)
         with self.player.operation:
+            if getattr(self.player,'identifying',False) is True: raise ValueError('Exit identify mode first.')
             status = self.player.status()
             if status.get('playing') and d['id'] in status.get('controllerIds', []):
                 raise ValueError('This light is playing the show. Stop playback before direct control.')

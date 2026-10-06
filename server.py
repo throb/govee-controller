@@ -207,6 +207,7 @@ class Network:
 
 class Player:
     def __init__(self, network):
+        self.identifying = False
         self.net = network
         self.operation = threading.RLock()
         self.lock = threading.RLock()
@@ -301,6 +302,7 @@ class Player:
         if isinstance(position, bool) or not isinstance(position, (int, float)) or not 0 <= position < project['duration']: raise ValueError('Invalid playback position')
         if type(body.get('loop', False)) is not bool: raise ValueError('Invalid loop setting')
         with self.operation:
+            if self.identifying: raise ValueError('Exit identify mode first.')
             self.stop()
             if project.get('controllers'):
                 devices = self.net.resolve_controllers([c['id'] for c in project['controllers']])
@@ -452,6 +454,7 @@ class Player:
         colors = [[255,0,0], [0,255,0], [0,0,255], [255,128,0], [255,0,255], [0,255,255]]
         project = {'version': 1, 'duration': 8, 'tracks': [{'name': f'Flood {i+1}', 'keys': [{'t': 0, 'on': True, 'intensity': 100, 'color': c, 'ease': 'jump'}]} for i,c in enumerate(colors)]}
         with self.operation:
+            if self.identifying: raise ValueError('Exit identify mode first.')
             self.stop()
             self.calibration_id = str(uuid.uuid4())
             self.calibration_done = False
@@ -475,6 +478,7 @@ class Player:
         if not isinstance(color, list) or len(color) != 3 or any(type(c) is not int or not 0 <= c <= 255 for c in color): raise ValueError('Invalid color')
         if type(level) is not int or not 0 <= level <= 100 or type(on) is not bool: raise ValueError('Invalid power or intensity')
         with self.operation:
+            if self.identifying: raise ValueError('Exit identify mode first.')
             self.stop()
             device = self.net.resolve_controllers([body['deviceId']])[0] if body.get('deviceId') else self.net.flood()
             if target == 'all':
@@ -610,6 +614,8 @@ class Handler(BaseHTTPRequestHandler):
             elif path == '/api/devices/select': result = PLAYER.select_device(body)
             elif path == '/api/layout/move': result = LAYOUT.move(body)
             elif path == '/api/layout/identify': result = LAYOUT.identify(body)
+            elif path == '/api/layout/identify/start': result = LAYOUT.begin_identify()
+            elif path == '/api/layout/identify/end': result = LAYOUT.end_identify()
             elif path == '/api/tablet/enable': result = TABLET.enable(local_ipv4_addresses())
             elif path == '/api/tablet/disable': result = TABLET.disable()
             elif path == '/api/play': result = PLAYER.start(body)
@@ -643,7 +649,9 @@ if __name__ == '__main__':
     NET = Network()
     PLAYER = Player(NET)
     LAYOUT = LayoutControls(DATA / 'project.json', NET, PLAYER, DeviceControls(NET,CLOUD,PLAYER))
-    TABLET = TabletSetup(ROOT, LAYOUT.snapshot, LAYOUT.move, LAYOUT.identify, PLAYER.stop)
+    TABLET = TabletSetup(ROOT, LAYOUT.snapshot, LAYOUT.move, LAYOUT.identify, PLAYER.stop, LAYOUT.begin_identify, LAYOUT.end_identify)
     print(f'Light Bridge Studio: http://127.0.0.1:{PORT}', flush=True)
     try: ThreadingHTTPServer(('127.0.0.1', PORT), Handler).serve_forever()
-    finally: PLAYER.stop()
+    finally:
+        LAYOUT.end_identify()
+        PLAYER.stop()

@@ -10,7 +10,7 @@ def call(name,args={}):
 try:
  assert rpc('initialize',{'protocolVersion':'2025-11-25','capabilities':{},'clientInfo':{'name':'verify','version':'1'}})['protocolVersion']=='2025-11-25'
  p.stdin.write(json.dumps({'jsonrpc':'2.0','method':'notifications/initialized'})+'\n');p.stdin.flush()
- assert len(rpc('tools/list')['tools'])==22
+ assert len(rpc('tools/list')['tools'])==24
  assert 'Show schema' in rpc('resources/read',{'uri':'lightbridge://guide'})['contents'][0]['text']
  show=call('show_create',{'name':'MCP Blue Amber Example','duration':6})
  for i in range(6):
