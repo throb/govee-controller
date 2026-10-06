@@ -31,6 +31,15 @@ def validate_project(project):
             number(fixture.get('x'), 5, 95, 'Flood X')
             number(fixture.get('y'), 8, 92, 'Flood Y')
             number(fixture.get('angle'), -180, 180, 'Flood aim')
+        extra = layout.get('lights', [])
+        if not isinstance(extra, list) or len(extra)>256: raise ValueError('Too many layout lights')
+        extra_ids=set()
+        for fixture in extra:
+            if not isinstance(fixture,dict) or not isinstance(fixture.get('deviceId'),str) or not fixture['deviceId'] or fixture['deviceId'] in extra_ids: raise ValueError('Invalid layout light identity')
+            extra_ids.add(fixture['deviceId'])
+            for name in ('model','name'):
+                if not isinstance(fixture.get(name),str) or len(fixture[name])>200: raise ValueError('Invalid light '+name)
+            number(fixture.get('x'),5,95,'Light X');number(fixture.get('y'),8,92,'Light Y')
     tracks = project.get('tracks')
     if not isinstance(tracks, list) or len(tracks) != track_count:
         raise ValueError('This H7062 project needs six flood tracks per controller')

@@ -84,6 +84,44 @@ class GoveeCloud:
             self.devices = []
             return self.status()
 
+    def refresh(self):
+        with self.lock:
+            if self.key: return self.connect(self.key)
+            return self.status()
+
+    def device_request(self, identifier, action, capability=None):
+        if action not in ('state', 'scenes', 'diy-scenes', 'control'): raise ValueError('Unknown device action')
+        with self.lock:
+            if not self.key: raise ValueError('Connect your Govee API key in Settings → API')
+            device = next((d for d in self.devices if d.get('device') == identifier), None)
+            if device is None: raise ValueError('Device is not in your Govee account')
+            payload = {'sku':device['sku'], 'device':identifier}
+            if capability is not None: payload['capability'] = capability
+            time.sleep(max(0, .6 - (time.monotonic() - self.last_control)))
+            request = urllib.request.Request('https://openapi.api.govee.com/router/api/v1/device/' + action,
+                data=json.dumps({'requestId':str(uuid.uuid4()), 'payload':payload}, allow_nan=False).encode(),
+                headers={'Govee-API-Key':self.key, 'Content-Type':'application/json'})
+            try:
+                self.last_control = time.monotonic()
+                with self.opener.open(request, timeout=15) as response: raw = response.read(4*1024*1024+1)
+                if len(raw)>4*1024*1024: raise ValueError('Response too large')
+                result = json.loads(raw)
+            except urllib.error.HTTPError as error:
+                if error.code == 429: raise ValueError('Govee rate limit reached. Wait before retrying.') from None
+                raise ValueError('Govee device request failed (HTTP '+str(error.code)+')') from None
+            except (urllib.error.URLError, OSError, ValueError):
+                raise ValueError('Govee device request failed. Check the API connection.') from None
+            if not isinstance(result, dict) or result.get('code') != 200: raise ValueError('Govee rejected the device request')
+            if action in ('scenes','diy-scenes'):
+                for new in result.get('payload', {}).get('capabilities', []):
+                    existing = next((c for c in device.get('capabilities', []) if c.get('type')==new.get('type') and c.get('instance')==new.get('instance')), None)
+                    if existing:
+                        options = existing.setdefault('parameters', {}).setdefault('options', [])
+                        for option in new.get('parameters', {}).get('options', []):
+                            if option not in options: options.append(option)
+                    else: device.setdefault('capabilities', []).append(new)
+            return result.get('payload', result)
+
     def status(self):
         with self.lock:
             floods = []

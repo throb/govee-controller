@@ -13,7 +13,7 @@ def project(duration=1):
 
 class FakeNetwork:
     def __init__(self): self.commands=[];self.restored=[]
-    def flood(self): return {'ip':'192.0.2.1'}
+    def flood(self): return {'id':'test-flood','ip':'192.0.2.1'}
     def fresh_state(self,ip): return {'onOff':1,'brightness':15,'color':{'r':255,'g':0,'b':0},'colorTemInKelvin':0}
     def send(self,ip,cmd,data): self.commands.append((ip,cmd,data))
     def restore(self,ip,state):
@@ -32,6 +32,7 @@ class AnimationTests(unittest.TestCase):
                 deadline=time.monotonic()+3
                 while player.status().get('cycle',0)<2 and time.monotonic()<deadline: time.sleep(.02)
                 self.assertTrue(player.status()['playing'])
+                self.assertEqual(player.status()['controllerIds'], ['test-flood'])
                 self.assertGreaterEqual(player.status()['cycle'],2)
                 self.assertGreater(len([c for c in net.commands if c[1]=='ptReal']),3)
                 player.set_loop({'loop':False})

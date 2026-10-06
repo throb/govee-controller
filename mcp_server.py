@@ -38,8 +38,15 @@ def tool(name, description, properties=None, required=None, read=False):
     TOOLS.append({'name':name,'description':description,'inputSchema':schema(properties,required),'annotations':{'readOnlyHint':read,'destructiveHint':not read,'openWorldHint':False}})
 
 tool('lighting_capabilities','Discover supported authoring and playback capabilities. No hardware commands.',read=True)
-tool('lighting_discover','Scan the LAN for Govee controllers. Only the configured H7062 six-head set is an animation target.')
+tool('lighting_discover','Scan the LAN for Govee controllers. Use lighting_refresh_devices for merged LAN and cloud capabilities.')
 tool('lighting_devices','List discovered controllers and the selected flood set.',read=True)
+tool('lighting_refresh_devices','Refresh LAN and Govee account inventory with advertised capabilities.')
+tool('lighting_device_state','Read current state of any discovered Govee device.',{'id':S},['id'],True)
+tool('lighting_device_scenes','Load advertised dynamic or DIY scenes for a Govee account device.',{'id':S,'diy':{'type':'boolean'}},['id'],True)
+tool('lighting_device_control','Apply one advertised lighting capability. Get type, instance and parameter schema from lighting_devices. Rejects lights currently playing the show.',{'id':S,'type':S,'instance':S,'value':{}},['id','type','instance','value'])
+tool('lighting_layout','Read all added lights, positions and layout revision.',read=True)
+tool('lighting_move_light','Move an added light. Pass current revision from lighting_layout.',{'projectId':S,'key':S,'x':{'type':'number','minimum':5,'maximum':95},'y':{'type':'number','minimum':8,'maximum':92},'revision':{'type':'integer','minimum':0}},['projectId','key','x','y','revision'])
+tool('lighting_identify','Illuminate an added LAN light for two seconds then restore controller state. Pause playback first. Individual prior head colors cannot be restored from readback.',{'key':S},['key'])
 tool('lighting_select_device','Select a discovered H7062 flood set for subsequent control. Stop playback first. Persists selection without starting lights.',{'id':S},['id'])
 tool('lighting_status','Get playback status and loop cycle. Does not prove physical light output.',read=True)
 tool('shows_list','List named shows saved on disk.',read=True)
@@ -72,9 +79,16 @@ def check_arguments(name,args):
 
 def call(name,a):
     check_arguments(name,a)
-    if name=='lighting_capabilities': return {'target':'configured H7062','headsPerController':6,'maxControllers':16,'maxTracks':96,'legacyTracks':6,'multiController':True,'transitions':['linear','jump'],'channels':['on','intensity','color'],'playbackHz':10,'standaloneDevicePresetUpload':False,'storage':'local disk','guide':'lightbridge://guide','credentialsExposed':False}
+    if name=='lighting_capabilities': return {'target':'discovered Govee lights','deviceControl':'advertised LAN and cloud capabilities','animationTarget':'H7062','headsPerController':6,'maxControllers':16,'maxTracks':96,'legacyTracks':6,'multiController':True,'transitions':['linear','jump'],'channels':['on','intensity','color'],'playbackHz':10,'standaloneDevicePresetUpload':False,'storage':'local disk','guide':'lightbridge://guide','credentialsExposed':False}
     if name=='lighting_discover': return api('/api/discover',{})
     if name=='lighting_devices': return api('/api/devices')
+    if name=='lighting_refresh_devices': return api('/api/devices/refresh',{})
+    if name=='lighting_device_state': return api('/api/devices/state',a)
+    if name=='lighting_device_scenes': return api('/api/devices/scenes',a)
+    if name=='lighting_device_control': return api('/api/devices/control',a)
+    if name=='lighting_layout': return api('/api/layout')
+    if name=='lighting_move_light': return api('/api/layout/move',a)
+    if name=='lighting_identify': return api('/api/layout/identify',a)
     if name=='lighting_select_device': return api('/api/devices/select',{'id':a['id']})
     if name=='lighting_status': return api('/api/status')
     if name=='shows_list': return api('/api/shows')
@@ -129,7 +143,7 @@ def dispatch(request):
     ident=request['id'];method=request['method'];params=request.get('params',{})
     if not isinstance(params,dict):return {'jsonrpc':'2.0','id':ident,'error':{'code':-32602,'message':'Params must be an object'}}
     try:
-        if method=='initialize':result={'protocolVersion':params.get('protocolVersion') if params.get('protocolVersion') in ['2024-11-05','2025-03-26','2025-06-18','2025-11-25'] else '2025-11-25','capabilities':{'tools':{},'resources':{}},'serverInfo':{'name':'light-bridge','version':'1.0.0'},'instructions':'Read lightbridge://guide. Author/save tools do not play. Only explicit playback tools change physical output. No standalone preset upload.'}
+        if method=='initialize':result={'protocolVersion':params.get('protocolVersion') if params.get('protocolVersion') in ['2024-11-05','2025-03-26','2025-06-18','2025-11-25'] else '2025-11-25','capabilities':{'tools':{},'resources':{}},'serverInfo':{'name':'light-bridge','version':'1.0.0'},'instructions':'Read lightbridge://guide. Author/save tools do not play. Playback and lighting_device_control change physical output. No standalone preset upload.'}
         elif method=='ping':result={}
         elif method=='tools/list':result={'tools':TOOLS}
         elif method=='tools/call':

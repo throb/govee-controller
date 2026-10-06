@@ -13,6 +13,9 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 from animation import validate_project, evaluate, rgb_output, segment_packet
 from govee_cloud import GoveeCloud
+from device_controls import DeviceControls
+from layout_controls import LayoutControls
+from tablet_setup import TabletSetup
 from credential_store import CredentialStore
 from effect_lab import encode_timeline_frame
 from show_library import ShowLibrary
@@ -317,7 +320,7 @@ class Player:
             self.cancel = threading.Event()
             start_wall = time.time() + .35
             with self.lock:
-                self.state = {'playing': True, 'time': position, 'mode': mode, 'error': None, 'frames': 0, 'startWall': start_wall, 'duration': project['duration'], 'restored': None, 'loop': body.get('loop', False), 'cycle': 0, 'stopAt': project['duration']}
+                self.state = {'playing': True, 'time': position, 'mode': mode, 'error': None, 'frames': 0, 'startWall': start_wall, 'duration': project['duration'], 'restored': None, 'loop': body.get('loop', False), 'cycle': 0, 'stopAt': project['duration'], 'controllerIds':[device['id']]}
             self.thread = threading.Thread(target=self.run, args=(project, mode, position, body.get('loop', False), start_wall), daemon=True)
             self.thread.start()
             return self.status()
@@ -501,6 +504,18 @@ class Player:
             temporary.write_text(json.dumps(self.applied), encoding='utf-8')
             temporary.replace(self.applied_file)
 
+    def invalidate_applied(self, device_id):
+        with self.lock:
+            self.applied_devices.pop(device_id, None)
+            temporary = self.applied_devices_file.with_suffix('.tmp')
+            temporary.write_text(json.dumps(self.applied_devices), encoding='utf-8')
+            temporary.replace(self.applied_devices_file)
+            if device_id == FLOOD_ID:
+                self.applied = [None] * 6
+                temporary = self.applied_file.with_suffix('.tmp')
+                temporary.write_text(json.dumps(self.applied), encoding='utf-8')
+                temporary.replace(self.applied_file)
+
 NET = None
 PLAYER = None
 CLOUD = GoveeCloud(CredentialStore(DATA / 'govee-key.dpapi'))
@@ -537,7 +552,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == '/api/cloud/status': self.respond(200, CLOUD.status()); return
         if path == '/api/status': self.respond(200, PLAYER.status()); return
-        if path == '/api/devices': self.respond(200, NET.inventory()); return
+        if path == '/api/devices': self.respond(200, DeviceControls(NET, CLOUD, PLAYER).inventory()); return
+        if path == '/api/layout': self.respond(200, LAYOUT.snapshot()); return
         if path == '/api/light-state':
             identifier = parse_qs(urlparse(self.path).query).get('deviceId', [None])[0]
             applied = PLAYER.applied_devices.get(identifier, [None]*6) if identifier else PLAYER.applied
@@ -581,7 +597,21 @@ class Handler(BaseHTTPRequestHandler):
             elif path == '/api/cloud/reconnect': CLOUD.reconnect(); result = CLOUD.status()
             elif path == '/api/cloud/disconnect': result = CLOUD.disconnect()
             elif path == '/api/discover': result = NET.discover()
+            elif path == '/api/devices/refresh':
+                NET.discover()
+                cloud_error = None
+                try: CLOUD.refresh()
+                except ValueError as error: cloud_error = str(error)
+                result = DeviceControls(NET, CLOUD, PLAYER).inventory()
+                result['cloudError'] = cloud_error
+            elif path == '/api/devices/state': result = DeviceControls(NET, CLOUD, PLAYER).state(body.get('id'))
+            elif path == '/api/devices/scenes': result = CLOUD.device_request(body.get('id'), 'diy-scenes' if body.get('diy') else 'scenes')
+            elif path == '/api/devices/control': result = DeviceControls(NET, CLOUD, PLAYER).control(body)
             elif path == '/api/devices/select': result = PLAYER.select_device(body)
+            elif path == '/api/layout/move': result = LAYOUT.move(body)
+            elif path == '/api/layout/identify': result = LAYOUT.identify(body)
+            elif path == '/api/tablet/enable': result = TABLET.enable(local_ipv4_addresses())
+            elif path == '/api/tablet/disable': result = TABLET.disable()
             elif path == '/api/play': result = PLAYER.start(body)
             elif path == '/api/manual': result = PLAYER.manual(body)
             elif path == '/api/stop': result = PLAYER.stop()
@@ -594,9 +624,15 @@ class Handler(BaseHTTPRequestHandler):
                 if body.get('audioRef'): uuid.UUID(body['audioRef'])
                 temp = DATA / 'project.tmp'
                 with PLAYER.operation:
+                    if (DATA / 'project.json').exists():
+                        current = json.loads((DATA / 'project.json').read_text(encoding='utf-8'))
+                        same = (current.get('layoutId') or current.get('libraryShowId') or current.get('name')) == (body.get('layoutId') or body.get('libraryShowId') or body.get('name'))
+                        if same and current.get('layoutRevision',0) > body.get('layoutRevision',0):
+                            raise ValueError('Layout changed on another screen. Reload before saving to avoid overwriting it.')
+                        if same and current.get('layout') != body.get('layout'): body['layoutRevision'] = max(current.get('layoutRevision',0),body.get('layoutRevision',0))+1
                     temp.write_text(json.dumps(body))
                     temp.replace(DATA / 'project.json')
-                result = {'saved':True}
+                result = {'saved':True, 'layoutRevision':body.get('layoutRevision',0)}
             else: self.respond(404, {'error':'Not found'}); return
             self.respond(200, result)
         except (ValueError, KeyError, TypeError, AttributeError) as error: self.respond(400, {'error':str(error)})
@@ -606,6 +642,8 @@ if __name__ == '__main__':
     threading.Thread(target=CLOUD.reconnect, daemon=True).start()
     NET = Network()
     PLAYER = Player(NET)
+    LAYOUT = LayoutControls(DATA / 'project.json', NET, PLAYER, DeviceControls(NET,CLOUD,PLAYER))
+    TABLET = TabletSetup(ROOT, LAYOUT.snapshot, LAYOUT.move, LAYOUT.identify, PLAYER.stop)
     print(f'Light Bridge Studio: http://127.0.0.1:{PORT}', flush=True)
     try: ThreadingHTTPServer(('127.0.0.1', PORT), Handler).serve_forever()
     finally: PLAYER.stop()
