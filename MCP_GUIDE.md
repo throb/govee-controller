@@ -64,3 +64,7 @@ Shows live on this computer. The server streams frames at 10 Hz over LAN. This i
 Stop restores the starting shared controller color, brightness and power, not the exact previous per-head scene. Existing API credentials stay encrypted in the app; MCP has no credential read/write tools. Authoring is side-effect-free until save or an explicit physical-control tool. Saved shows are not automatically synchronized into an already-open editor, preventing silent replacement of unsaved user edits.
 
 Protocol references: https://modelcontextprotocol.io/specification/2025-11-25/basic/transports and https://modelcontextprotocol.io/specification/2025-11-25/server/tools.
+
+## Controller selection
+
+Run `lighting_discover`, then `lighting_devices` to inspect every responding controller and the selected ID. Call `lighting_select_device` with an H7062 device `id` to select its six heads. Selection is saved and does not start playback. Stop playback before switching. Other discovered models are visible but not yet controllable; simultaneous multi-controller timelines are not supported.

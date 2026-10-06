@@ -144,14 +144,22 @@ class Network:
     def flood(self):
         with self.condition:
             matches = [d for d in self.devices.values() if (not FLOOD_ID or d['id'] == FLOOD_ID) and d['model'] == 'H7062']
-            if len(matches) > 1: raise ValueError('Multiple H7062 controllers found. Set flood_id in data/network.json.')
+            if len(matches) > 1: raise ValueError('Multiple H7062 controllers found. Select a flood controller in Devices.')
             if matches: return dict(matches[0])
         self.discover()
         with self.condition:
             matches = [d for d in self.devices.values() if (not FLOOD_ID or d['id'] == FLOOD_ID) and d['model'] == 'H7062']
-            if len(matches) > 1: raise ValueError('Multiple H7062 controllers found. Set flood_id in data/network.json.')
+            if len(matches) > 1: raise ValueError('Multiple H7062 controllers found. Select a flood controller in Devices.')
             if not matches: raise ValueError('Flood controller did not respond. Check its power and LAN control setting.')
             return dict(matches[0])
+
+    def inventory(self):
+        with self.condition:
+            devices = json.loads(json.dumps(list(self.devices.values())))
+        supported = [d for d in devices if d['model'] == 'H7062']
+        selected = next((d['id'] for d in supported if d['id'] == FLOOD_ID), None)
+        if not FLOOD_ID and len(supported) == 1: selected = supported[0]['id']
+        return {'devices': devices, 'selectedId': selected}
 
     def fresh_state(self, ip, timeout=2):
         before = time.time()
@@ -212,6 +220,38 @@ class Player:
 
     def status(self):
         with self.lock: return dict(self.state, individualConfirmed=self.confirmed, calibrationId=self.calibration_id, calibrationDone=self.calibration_done)
+
+    def select_device(self, body):
+        global FLOOD_ID, CONFIG
+        identifier = body.get('id')
+        if not isinstance(identifier, str) or not identifier: raise ValueError('Choose a discovered flood controller')
+        with self.operation:
+            if self.state.get('playing') or (self.thread and self.thread.is_alive()):
+                raise ValueError('Stop playback or calibration before changing controllers')
+            with self.net.condition:
+                device = next((dict(d) for d in self.net.devices.values() if d['id'] == identifier), None)
+            if device is None: raise ValueError('Controller is not discovered. Find lights again.')
+            if device['model'] != 'H7062': raise ValueError('This model is discovered but not supported by the six-head editor yet')
+            if identifier != FLOOD_ID:
+                config = dict(CONFIG, flood_id=identifier)
+                # Clear persisted head colors and test results before changing the target.
+                # If a write fails, no new target can inherit another controller's state.
+                for path, value in [(self.applied_file, [None] * 6), (self.profile_file, {}), (self.calibration_file, {})]:
+                    temporary = path.with_suffix('.tmp')
+                    temporary.write_text(json.dumps(value), encoding='utf-8')
+                    temporary.replace(path)
+                temporary = CONFIG_FILE.with_suffix('.tmp')
+                temporary.write_text(json.dumps(config), encoding='utf-8')
+                temporary.replace(CONFIG_FILE)
+                CONFIG, FLOOD_ID = config, identifier
+                with self.lock:
+                    self.applied = [None] * 6
+                    self.confirmed = False
+                    self.calibration_id = None
+                    self.calibration_done = False
+                    self.snapshot = self.ip = None
+                    self.state = {'playing': False, 'time': 0, 'mode': 'effect-frames', 'error': None, 'frames': 0, 'restored': None}
+            return dict(self.net.inventory(), selectedDevice={key:device[key] for key in ('id', 'model', 'ip')})
 
     def stop(self):
         with self.operation:
@@ -424,12 +464,13 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == '/api/cloud/status': self.respond(200, CLOUD.status()); return
         if path == '/api/status': self.respond(200, PLAYER.status()); return
+        if path == '/api/devices': self.respond(200, NET.inventory()); return
         if path == '/api/light-state':
             try:
                 device = NET.flood()
                 state = NET.fresh_state(device['ip'])
-                self.respond(200, {'controller':state, 'lastApplied':PLAYER.applied, 'readAt':time.time(), 'individualReadback':False})
-            except (ValueError, OSError): self.respond(200, {'controller':None, 'lastApplied':PLAYER.applied, 'readAt':None, 'individualReadback':False})
+                self.respond(200, {'controller':state, 'device':{key:device[key] for key in ('id', 'model', 'ip')}, 'selectedId':device['id'], 'lastApplied':PLAYER.applied, 'readAt':time.time(), 'individualReadback':False})
+            except (ValueError, OSError): self.respond(200, {'controller':None, 'device':None, 'selectedId':NET.inventory()['selectedId'], 'lastApplied':PLAYER.applied, 'readAt':None, 'individualReadback':False})
             return
         if path == '/api/project':
             try: self.respond(200, json.loads((DATA / 'project.json').read_text()))
@@ -465,6 +506,7 @@ class Handler(BaseHTTPRequestHandler):
             elif path == '/api/cloud/reconnect': CLOUD.reconnect(); result = CLOUD.status()
             elif path == '/api/cloud/disconnect': result = CLOUD.disconnect()
             elif path == '/api/discover': result = NET.discover()
+            elif path == '/api/devices/select': result = PLAYER.select_device(body)
             elif path == '/api/play': result = PLAYER.start(body)
             elif path == '/api/manual': result = PLAYER.manual(body)
             elif path == '/api/stop': result = PLAYER.stop()

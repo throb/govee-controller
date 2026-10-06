@@ -19,6 +19,6 @@ class MCPTests(unittest.TestCase):
   self.assertEqual(m.dispatch({'jsonrpc':'2.0','id':4,'method':'unknown'})['error']['code'],-32601)
   self.assertEqual(m.dispatch([])['error']['code'],-32600)
  def test_tools_have_no_secret_or_arbitrary_request_access(self):
-  self.assertEqual(len(m.TOOLS),12)
+  self.assertEqual(len(m.TOOLS),14)
   for t in m.TOOLS:self.assertFalse({'apiKey','url','path'} & set(t['inputSchema']['properties']))
 if __name__=='__main__':unittest.main()

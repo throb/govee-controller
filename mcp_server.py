@@ -39,6 +39,8 @@ def tool(name, description, properties=None, required=None, read=False):
 
 tool('lighting_capabilities','Discover supported authoring and playback capabilities. No hardware commands.',read=True)
 tool('lighting_discover','Scan the LAN for Govee controllers. Only the configured H7062 six-head set is an animation target.')
+tool('lighting_devices','List discovered controllers and the selected flood set.',read=True)
+tool('lighting_select_device','Select a discovered H7062 flood set for subsequent control. Stop playback first. Persists selection without starting lights.',{'id':S},['id'])
 tool('lighting_status','Get playback status and loop cycle. Does not prove physical light output.',read=True)
 tool('shows_list','List named shows saved on disk.',read=True)
 tool('show_get','Read one saved show, or the editor autosave when id is omitted.',{'id':S},read=True)
@@ -71,6 +73,8 @@ def call(name,a):
     check_arguments(name,a)
     if name=='lighting_capabilities': return {'target':'configured H7062','tracks':6,'trackIndices':[0,1,2,3,4,5],'transitions':['linear','jump'],'channels':['on','intensity','color'],'playbackHz':10,'standaloneDevicePresetUpload':False,'storage':'local disk','guide':'lightbridge://guide','credentialsExposed':False}
     if name=='lighting_discover': return api('/api/discover',{})
+    if name=='lighting_devices': return api('/api/devices')
+    if name=='lighting_select_device': return api('/api/devices/select',{'id':a['id']})
     if name=='lighting_status': return api('/api/status')
     if name=='shows_list': return api('/api/shows')
     if name=='show_get': return api('/api/shows/'+valid_id(a['id'])) if a.get('id') else api('/api/project')
