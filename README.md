@@ -7,7 +7,7 @@ A local lighting editor for **Govee H7062 flood sets** — with a visual stage, 
 
 **Python · Vanilla JavaScript · Local LAN playback · MIT**
 
-[Get started](#get-started) · [The editor](#make-light-move) · [MCP for agents](#built-in-mcp-for-lighting-agents) · [Security](SECURITY.md)
+[Get started](#get-started) · [The editor](#make-light-move) · [MCP for agents](#built-in-mcp-for-lighting-agents) · [Changelog](CHANGELOG.md) · [Security](SECURITY.md)
 
 </div>
 
