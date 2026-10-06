@@ -32,7 +32,7 @@ def schema(properties=None, required=None):
     return {'type':'object','properties':properties or {},'required':required or [],'additionalProperties':False}
 
 S={'type':'string'}
-PROJECT={'type':'object','description':'Complete version-1 six-track show. Read lightbridge://guide for schema; unknown editor fields are preserved.'}
+PROJECT={'type':'object','description':'Complete version-1 show with six tracks per H7062 controller. Read lightbridge://guide for schema; unknown editor fields are preserved.'}
 TOOLS=[]
 def tool(name, description, properties=None, required=None, read=False):
     TOOLS.append({'name':name,'description':description,'inputSchema':schema(properties,required),'annotations':{'readOnlyHint':read,'destructiveHint':not read,'openWorldHint':False}})
@@ -45,7 +45,8 @@ tool('lighting_status','Get playback status and loop cycle. Does not prove physi
 tool('shows_list','List named shows saved on disk.',read=True)
 tool('show_get','Read one saved show, or the editor autosave when id is omitted.',{'id':S},read=True)
 tool('show_create','Create a new in-memory six-track show, initially Off. Does not save or play.',{'name':S,'duration':{'type':'number','minimum':.1,'maximum':3600}},['name','duration'],True)
-tool('show_set_track','Return an edited copy of a show with one track replaced. Does not save or play.',{'project':PROJECT,'track':{'type':'integer','minimum':0,'maximum':5},'keys':{'type':'array','minItems':1,'items':{'type':'object','required':['t','on','intensity','color','ease'],'properties':{'t':{'type':'number','minimum':0},'on':{'type':'boolean'},'intensity':{'type':'number','minimum':0,'maximum':100},'color':{'type':'array','minItems':3,'maxItems':3,'items':{'type':'integer','minimum':0,'maximum':255}},'ease':{'enum':['linear','jump']}},'additionalProperties':True}}},['project','track','keys'],True)
+tool('show_add_controller','Return a show with another H7062 set and six Off tracks. For an unbound legacy show, provide existingDeviceId to bind its existing tracks. Does not save or play.',{'project':PROJECT,'id':S,'name':S,'existingDeviceId':S},['project','id'],True)
+tool('show_set_track','Return an edited copy of a show with one track replaced. Does not save or play.',{'project':PROJECT,'track':{'type':'integer','minimum':0,'maximum':95},'keys':{'type':'array','minItems':1,'items':{'type':'object','required':['t','on','intensity','color','ease'],'properties':{'t':{'type':'number','minimum':0},'on':{'type':'boolean'},'intensity':{'type':'number','minimum':0,'maximum':100},'color':{'type':'array','minItems':3,'maxItems':3,'items':{'type':'integer','minimum':0,'maximum':255}},'ease':{'enum':['linear','jump']}},'additionalProperties':True}}},['project','track','keys'],True)
 tool('show_validate','Validate a show and evaluate all six heads at a time without touching lights.',{'project':PROJECT,'time':{'type':'number','minimum':0}},['project'],True)
 tool('show_save','Save a complete show to disk. Omit id for a new show; existing id overwrites that named show. Does not play or replace the editor.',{'project':PROJECT,'id':S},['project'])
 tool('show_play','Explicit physical action: start a saved show on configured floods over LAN. Computer must stay running. Replaces current playback; does not upload a standalone device preset.',{'id':S,'loop':{'type':'boolean'},'position':{'type':'number','minimum':0}},['id'])
@@ -71,7 +72,7 @@ def check_arguments(name,args):
 
 def call(name,a):
     check_arguments(name,a)
-    if name=='lighting_capabilities': return {'target':'configured H7062','tracks':6,'trackIndices':[0,1,2,3,4,5],'transitions':['linear','jump'],'channels':['on','intensity','color'],'playbackHz':10,'standaloneDevicePresetUpload':False,'storage':'local disk','guide':'lightbridge://guide','credentialsExposed':False}
+    if name=='lighting_capabilities': return {'target':'configured H7062','headsPerController':6,'maxControllers':16,'maxTracks':96,'legacyTracks':6,'multiController':True,'transitions':['linear','jump'],'channels':['on','intensity','color'],'playbackHz':10,'standaloneDevicePresetUpload':False,'storage':'local disk','guide':'lightbridge://guide','credentialsExposed':False}
     if name=='lighting_discover': return api('/api/discover',{})
     if name=='lighting_devices': return api('/api/devices')
     if name=='lighting_select_device': return api('/api/devices/select',{'id':a['id']})
@@ -81,8 +82,27 @@ def call(name,a):
     if name=='show_create':
         p={'version':1,'name':a['name'],'duration':a['duration'],'loop':False,'tracks':[{'name':f'Flood {i+1}','keys':[{'id':str(uuid.uuid4()),'t':0,'on':False,'intensity':0,'color':[0,0,0],'ease':'jump'}]} for i in range(6)]}
         validate_project(p);return p
+    if name=='show_add_controller':
+        p=json.loads(json.dumps(a['project']));validate_project(p)
+        identifier=a['id'].strip()
+        if not identifier: raise ValueError('Controller ID is required')
+        if 'controllers' not in p:
+            existing=a.get('existingDeviceId')
+            if not existing: raise ValueError('Provide existingDeviceId to bind the six legacy tracks first')
+            p['controllers']=[{'id':existing,'model':'H7062'}]
+            if existing==identifier:
+                validate_project(p);return p
+        if any(c['id']==identifier for c in p['controllers']): raise ValueError('Controller already in show')
+        if len(p['controllers'])>=16: raise ValueError('Maximum 16 controllers per show')
+        name=a.get('name') or 'Set '+str(len(p['controllers'])+1)
+        p['controllers'].append({'id':identifier,'model':'H7062','name':name})
+        for i in range(6):
+            p['tracks'].append({'name':f'{name} / {i+1}','keys':[{'id':str(uuid.uuid4()),'t':0,'on':False,'intensity':0,'color':[255,255,255],'ease':'jump'}]})
+            if 'layout' in p: p['layout']['fixtures'].append({'x':10+i*16,'y':min(90,15+len(p['controllers'])*5),'angle':0})
+        validate_project(p);return p
     if name=='show_set_track':
         p=json.loads(json.dumps(a['project']));validate_project(p)
+        if a['track']>=len(p['tracks']): raise ValueError('Track index exceeds this show')
         p['tracks'][a['track']]['keys']=json.loads(json.dumps(a['keys']))
         for k in p['tracks'][a['track']]['keys']: k['id']=str(uuid.uuid4())
         p['tracks'][a['track']]['keys'].sort(key=lambda k:k['t'])

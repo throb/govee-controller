@@ -10,19 +10,30 @@ def validate_project(project):
     if not isinstance(project, dict) or project.get('version') != 1:
         raise ValueError('Unsupported project format')
     duration = number(project.get('duration'), .1, 3600, 'Duration')
+    controllers = project.get('controllers')
+    if controllers is not None:
+        if not isinstance(controllers, list) or not 1 <= len(controllers) <= 16:
+            raise ValueError('Project needs 1–16 controllers')
+        ids = set()
+        for controller in controllers:
+            if not isinstance(controller, dict) or controller.get('model') != 'H7062' or not isinstance(controller.get('id'), str) or not controller['id'].strip() or len(controller['id']) > 200:
+                raise ValueError('Invalid H7062 controller binding')
+            if controller['id'] in ids: raise ValueError('Duplicate controller binding')
+            ids.add(controller['id'])
+    track_count = len(controllers) * 6 if controllers is not None else 6
     if 'layout' in project:
         layout = project['layout']
         fixtures = layout.get('fixtures') if isinstance(layout, dict) else None
-        if not isinstance(fixtures, list) or len(fixtures) != 6:
-            raise ValueError('Layout needs six flood placements')
+        if not isinstance(fixtures, list) or len(fixtures) != track_count:
+            raise ValueError('Layout must match the flood track count')
         for fixture in fixtures:
             if not isinstance(fixture, dict): raise ValueError('Invalid flood placement')
             number(fixture.get('x'), 5, 95, 'Flood X')
             number(fixture.get('y'), 8, 92, 'Flood Y')
             number(fixture.get('angle'), -180, 180, 'Flood aim')
     tracks = project.get('tracks')
-    if not isinstance(tracks, list) or len(tracks) != 6:
-        raise ValueError('This H7062 project needs six flood tracks')
+    if not isinstance(tracks, list) or len(tracks) != track_count:
+        raise ValueError('This H7062 project needs six flood tracks per controller')
     cleaned = []
     total = 0
     for i, track in enumerate(tracks):
@@ -47,7 +58,10 @@ def validate_project(project):
         cleaned.append({'name': str(track.get('name', f'Flood {i + 1}'))[:80], 'keys': checked})
         total += len(checked)
     if total > 12000: raise ValueError('Project exceeds 12000 keyframes')
-    return {'version': 1, 'name': str(project.get('name', 'Untitled'))[:120], 'duration': duration, 'tracks': cleaned}
+    result = {'version': 1, 'name': str(project.get('name', 'Untitled'))[:120], 'duration': duration, 'tracks': cleaned}
+    if controllers is not None:
+        result['controllers'] = [{'id':c['id'], 'model':'H7062', 'name':str(c.get('name', 'Flood set'))[:80]} for c in controllers]
+    return result
 
 def evaluate_track(track, t):
     keys = track['keys']

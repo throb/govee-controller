@@ -23,16 +23,16 @@ These are portable configuration examples: replace the paths with your installat
 ## Workflow
 
 1. Read `lighting_capabilities` and resource `lightbridge://guide`.
-2. Use `lighting_discover` to scan controllers. Only the configured H7062 six-head set can play these timelines; discovery does not make other models valid targets.
+2. Use `lighting_discover` to scan controllers. Only H7062 sets can play these timelines; discovery does not make other models valid targets. Add discovered controller IDs with `show_add_controller`.
 3. Use `show_create` with name and duration, or `show_get` to read an existing saved show. Omitting id reads the editor autosave without modifying it.
 4. Build each track with `show_set_track`. Each returned document is the input to the next edit. These operations do not save or alter physical lights.
-5. `show_validate` checks the complete show and evaluates its six output states at a chosen time. Inspect starts, transitions and loop boundary.
+5. `show_validate` checks the complete show and evaluates all output states at a chosen time. Inspect starts, transitions and loop boundary.
 6. `show_save` saves a new named show when id is omitted. Supply an existing id only to intentionally replace that saved show. Save returns its id. The editor working copy remains unchanged. Reopen the Saved shows list by reloading the editor to see externally saved entries.
 7. Only when playback is requested, `show_play` with the saved id and explicit loop setting starts physical output. It replaces current playback. Read `lighting_status`; `lighting_stop` stops it. `lighting_loop` changes looping; disabling finishes the current pass.
 
 ## Show schema
 
-A show has `version:1`, `name`, `duration` (0.1–3600 seconds), and exactly six `tracks`. Track index 0 is Flood 1; index 5 is Flood 6. Each track contains `name` and `keys`. Each track must have a key at time zero and distinct ascending times within duration. Maximum 5,000 keys per track and 12,000 per show.
+A show has `version:1`, `name`, `duration` (0.1–3600 seconds), and `tracks`. Legacy shows without `controllers` have exactly six tracks. Multi-set shows have `controllers:[{id,model:"H7062",name?}]` and six contiguous tracks per controller, in the same order. Up to 16 unique controllers / 96 tracks are allowed. Indices 0–5 belong to the first set, 6–11 to the second, and so on. Each track contains `name` and `keys`. Each track must have a key at time zero and distinct ascending times within duration. Maximum 5,000 keys per track and 12,000 per show.
 
 Every key has:
 
@@ -67,4 +67,8 @@ Protocol references: https://modelcontextprotocol.io/specification/2025-11-25/ba
 
 ## Controller selection
 
-Run `lighting_discover`, then `lighting_devices` to inspect every responding controller and the selected ID. Call `lighting_select_device` with an H7062 device `id` to select its six heads. Selection is saved and does not start playback. Stop playback before switching. Other discovered models are visible but not yet controllable; simultaneous multi-controller timelines are not supported.
+Run `lighting_discover`, then `lighting_devices` to inspect every responding controller and the selected ID. Call `lighting_select_device` with an H7062 device `id` to select its six heads. Selection is saved and does not start playback. Stop playback before switching. Other discovered models are visible but not yet controllable; multi-controller timelines use explicit IDs in the show instead of this legacy selection.
+
+## Add a set to a show
+
+`show_add_controller` takes `project`, a discovered H7062 `id`, and optional `name`, returning an edited copy with six new Off tracks. For a legacy six-track show, also pass `existingDeviceId` to bind its original tracks. If the new ID equals that existing ID, the call only binds the original set. Duplicate IDs are rejected. Continue editing with `show_set_track` (indices 0–95, bounded by actual track count), validate, save, and play explicitly. All controllers share one playback clock; unavailable controllers prevent the start.

@@ -3,7 +3,7 @@
 # Light Bridge Studio
 ### Your yard. Your timeline. Your light show.
 
-A local lighting editor for six-head **Govee H7062 floods** — with a visual stage, keyframe animation, and built-in MCP tools for agent-authored shows.
+A local lighting editor for **Govee H7062 flood sets** — with a visual stage, keyframe animation, and built-in MCP tools for agent-authored shows.
 
 **Python · Vanilla JavaScript · Local LAN playback · MIT**
 
@@ -19,7 +19,7 @@ Arrange your floods like they sit in the real world. Build a slow crossfade, a m
 
 | Design | Perform | Keep |
 | --- | --- | --- |
-| Six independent keyframe tracks | Local Wi-Fi playback at up to 10 Hz | Named shows saved to disk |
+| Six tracks per set, up to 16 sets | Local Wi-Fi playback at up to 10 Hz | Named shows saved to disk |
 | Linear fades or held/jump changes | Loop, seek, pause, and stop | JSON import and export |
 | Box-select, group-drag, copy between lights | Optional audio and editable beat markers | Undo and redo |
 | Color and intensity previews | Layout-aware pattern generation | Built-in MCP authoring tools |
@@ -45,7 +45,7 @@ python launch.py
 ```
 
 1. Enable **LAN Control** for the floods in Govee Home and connect the computer to the same LAN.
-2. Open **http://127.0.0.1:8765/**. First launch asks for your Govee API key: use **Save & connect**, or explicitly continue without a key for local LAN control. Click **Find lights** to discover your controller. Every responding controller appears under Discovered lights. A single H7062 is selected automatically; with multiple flood sets, use **Use this flood set** to choose which six heads the timeline controls. Other models are listed with their current support status.
+2. Open **http://127.0.0.1:8765/**. First launch asks for your Govee API key: use **Save & connect**, or explicitly continue without a key for local LAN control. Click **Find lights** to discover your controller. Every responding controller appears under Discovered lights. Use **Add to show** to include each flood set in one timeline. Each set contributes six independent tracks. Other models are listed with their current support status.
 3. Open **Advanced** and create keyframes. **Local animation** is the default output.
 4. Press **Play** to animate the physical floods. Enable **Loop** to repeat. If no controller responds, the app reports the connection failure instead of silently playing only on screen.
 5. Use **Save as…** to create a named show. **Save** updates it; **Export** makes a portable JSON copy.
@@ -79,7 +79,7 @@ For multiple network adapters, multicast discovery problems, or more than one H7
 }
 ```
 
-Replace the placeholders with your installation values. Omit fields you do not need. `lan_ip` defaults to all local interfaces, `targets` adds unicast discovery destinations, and `flood_id` pins one controller. The app remembers the flood set selected under Discovered lights. Only one six-head set is animated at a time. Environment variables `LIGHT_BRIDGE_LAN_IP` and `LIGHT_BRIDGE_FLOOD_ID` override the corresponding fields. Restart after configuration changes. Allow local UDP traffic on ports 4001–4003 if your firewall blocks discovery.
+Replace the placeholders with your installation values. Omit fields you do not need. `lan_ip` defaults to all local interfaces, `targets` adds unicast discovery destinations, and `flood_id` pins one controller. The app remembers the flood set selected under Discovered lights. A show can include up to 16 H7062 sets (96 heads), with six tracks per controller. Legacy six-track shows still work. Environment variables `LIGHT_BRIDGE_LAN_IP` and `LIGHT_BRIDGE_FLOOD_ID` override the corresponding fields. Restart after configuration changes. Allow local UDP traffic on ports 4001–4003 if your firewall blocks discovery.
 
 ### Troubleshooting first launch
 
@@ -87,7 +87,7 @@ Replace the placeholders with your installation values. Omit fields you do not n
 | --- | --- |
 | `python` is not found or opens the Store | Install [Python 3.12](https://www.python.org/downloads/windows/); on Windows, try `py -3.12 launch.py`. |
 | No floods found | Confirm the H7062 is powered, LAN Control is enabled, and both devices share a reachable LAN. Set `lan_ip` and `targets` for the correct adapter if multicast is blocked. |
-| More than one H7062 found | Choose **Use this flood set** on the desired controller card. |
+| More than one H7062 found | Use **Add to show** on each desired controller card. |
 | Basic single-head Apply asks for a test | Complete the cloud connection and visual separate-head test described above. |
 | Address already in use | Close another controller using UDP 4002. Launch only one Light Bridge server; `launch.py` reuses the server only when it belongs to the same installation. A different installation must be stopped in its terminal before launching this one. |
 | Agent cannot connect | Start the app first, use absolute MCP executable/script paths, then reconnect the MCP client. |
@@ -150,7 +150,7 @@ For clients supporting an `mcpServers` JSON configuration:
 | Tools | Purpose |
 | --- | --- |
 | `lighting_capabilities`, `lighting_discover`, `lighting_devices`, `lighting_select_device`, `lighting_status` | Inspect supported features, discover controllers, and check playback |
-| `show_create`, `show_set_track`, `show_validate` | Author and inspect six-track shows with RGB, intensity, on/off, and linear/jump transitions |
+| `show_create`, `show_add_controller`, `show_set_track`, `show_validate` | Author and inspect multi-set shows with RGB, intensity, on/off, and linear/jump transitions |
 | `shows_list`, `show_get`, `show_save` | Manage named shows stored on disk |
 | `show_play`, `lighting_loop`, `lighting_stop` | Explicitly control physical playback |
 
@@ -172,3 +172,9 @@ Node is only used for JavaScript checks. The app itself uses Python's standard l
 ## License & acknowledgments
 
 [MIT](LICENSE). Independent project; not affiliated with Govee. Packet-framing references and attribution are in [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).
+
+### Multi-set shows
+
+Discover your controllers, then use **Add to show** for each H7062 set. The original six tracks are preserved; newly added heads start off. Move the new fixtures on the layout and author or paste keys into their tracks. Save the expanded show with **Save as…** to keep the original. Playback evaluates one shared timeline and sends each controller its own six-head frame; Stop restores each controller’s starting shared state. Missing controllers stop playback from starting, rather than silently skipping part of a show.
+
+The project limit is 16 sets / 96 heads. Large-show validation is tested in software; real-world timing depends on the network and number of controllers. Only H7062 sets are supported for animation.

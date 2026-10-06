@@ -37,3 +37,14 @@ test('reject duplicate time, invalid RGB and non-finite values',()=>{
   const invalid=structuredClone(project);invalid.tracks[0].keys[0].color=[300,0,0];assert.throws(()=>validateProject(invalid));
   const nan=structuredClone(project);nan.duration=NaN;assert.throws(()=>validateProject(nan));
 });
+
+test('multi-controller projects require exact contiguous six-head mappings',()=>{
+ const p={version:1,duration:4,controllers:[{id:'A',model:'H7062'},{id:'B',model:'H7062'}],tracks:Array.from({length:12},()=>({keys:[key(0,0,[0,0,0])]})),layout:{fixtures:Array.from({length:12},()=>({x:50,y:50,angle:0}))}};
+ assert.equal(validateProject(p).tracks.length,12);
+ for(const change of [q=>q.controllers[1].id='A',q=>q.controllers[1].model='H6047',q=>q.tracks.pop(),q=>q.layout.fixtures.pop(),q=>delete q.controllers]){const q=structuredClone(p);change(q);assert.throws(()=>validateProject(q));}
+});
+test('chase reaches the second controller and wraps all twelve heads',()=>{
+ const beats=Array.from({length:14},(_,i)=>i);
+ assert.ok(pulseKeys(beats,14,7,'chase',[255,0,0],80,12).some(k=>k.t===7&&k.intensity===80));
+ assert.ok(pulseKeys(beats,14,0,'chase',[255,0,0],80,12).some(k=>k.t===12&&k.intensity===80));
+});

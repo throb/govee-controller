@@ -6,10 +6,11 @@ export function evaluateTrack(track,t){
 }
 export function rgbOutput(s){return s.color.map(c=>Math.round(c*(s.on?s.intensity/100:0)))}
 export function validateProject(p){
-  if(!p||p.version!==1||!Number.isFinite(p.duration)||p.duration<.1||p.duration>3600||!Array.isArray(p.tracks)||p.tracks.length!==6)throw Error('Invalid six-head project');
+  if(!p||p.version!==1||!Number.isFinite(p.duration)||p.duration<.1||p.duration>3600||!Array.isArray(p.tracks)||!p.tracks.length)throw Error('Invalid lighting project');
+  if(p.controllers!==undefined){if(!Array.isArray(p.controllers)||!p.controllers.length||p.controllers.length>16||p.controllers.some(c=>!c||typeof c.id!=='string'||!c.id.trim()||c.id.length>128||c.model!=='H7062')||new Set(p.controllers.map(c=>c.id)).size!==p.controllers.length||p.tracks.length!==p.controllers.length*6)throw Error('Invalid controller mapping');}else if(p.tracks.length!==6)throw Error('Legacy projects need six tracks');
   let count=0;
   if(p.layout!==undefined){
-    if(!p.layout||!Array.isArray(p.layout.fixtures)||p.layout.fixtures.length!==6)throw Error('Layout needs six flood placements');
+    if(!p.layout||!Array.isArray(p.layout.fixtures)||p.layout.fixtures.length!==p.tracks.length)throw Error('Layout needs one placement per track');
     for(const f of p.layout.fixtures)if(!f||!Number.isFinite(f.x)||f.x<5||f.x>95||!Number.isFinite(f.y)||f.y<8||f.y>92||!Number.isFinite(f.angle)||f.angle< -180||f.angle>180)throw Error('Invalid flood placement');
   }
   for(const tr of p.tracks){
@@ -48,11 +49,11 @@ export function waveform(samples,points=2000){
   const result=[];const step=Math.max(1,Math.ceil(samples.length/points));
   for(let i=0;i<samples.length;i+=step){let max=0;for(let j=i;j<Math.min(i+step,samples.length);j++)max=Math.max(max,Math.abs(samples[j]));result.push(max)}return result;
 }
-export function pulseKeys(beats,duration,index,pattern,color,intensity=65){
+export function pulseKeys(beats,duration,index,pattern,color,intensity=65,trackCount=6){
   const events=new Map();const put=(t,level,ease)=>{if(t>=0&&t<=duration)events.set(Math.round(t*1000)/1000,{t:Math.round(t*1000)/1000,on:true,intensity:level,color:[...color],ease})};
   put(0,0,'jump');
   beats.forEach((t,n)=>{
-    if(pattern==='chase'&&n%6!==index)return;
+    if(pattern==='chase'&&n%trackCount!==index)return;
     if(pattern==='alternate'&&n%2!==index%2)return;
     const interval=beats[n+1]===undefined?.5:beats[n+1]-t;
     put(t,intensity,'linear');put(t+Math.min(.25,interval*.65),0,'jump');

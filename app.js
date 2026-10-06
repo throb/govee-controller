@@ -10,7 +10,11 @@ let project=defaultProject(),selectedTrack=0,selectedKey=project.tracks[0].keys[
 
 let keySelection=new Set(),keyClipboard=null,pasteTime=null,durationDraft=null;
 let currentLightState=null,manualDirty=false,lightStateBusy=false,discoveredFlood=null,cloudKeySaved=false,deviceGeneration=0,discoveryBusy=false,discoveryFailed=false,virtualPreview=false;
-function hasFlood(){return Boolean(discoveredFlood||currentLightState?.controller)}
+function hasFlood(){return project.controllers?.length?project.controllers.every(c=>deviceInventory.some(d=>d.id===c.id&&d.model==='H7062')):Boolean(discoveredFlood||currentLightState?.controller)}
+function trackLabel(i){const c=project.controllers?.[Math.floor(i/6)];return c?`${c.name||'Set '+(Math.floor(i/6)+1)} · ${project.tracks[i].name}`:project.tracks[i].name}
+function trackDevice(i){return project.controllers?.[Math.floor(i/6)]?.id||selectedDeviceId}
+function stateFor(i){return project.controllers?lightStates[trackDevice(i)]:currentLightState}
+const lightStates={};
 let hardwareBusy=false,lastHardwareMode=null;
 let audioContext=null,audioBuffer=null,audioSamples=null,audioRate=0,audioSource=null,audioGain=null,calibrationId=null,statusTimer,loadedAudioRef=null,playGeneration=0;
 
@@ -35,7 +39,7 @@ document.addEventListener('keydown',event=>{if(serverChanged&&!event.target.clos
 setInterval(()=>{if(!serverChanged)verifyServer().catch(()=>{});},1000);
 
 
-function resetSelection(){keySelection=new Set([...keySelection].filter(id=>project.tracks.some(tr=>tr.keys.some(k=>k.id===id))));selectedTrack=Math.min(5,selectedTrack);if(!project.tracks[selectedTrack].keys.some(k=>k.id===selectedKey))selectedKey=project.tracks[selectedTrack].keys[0].id;position=Math.min(project.duration,position)}
+function resetSelection(){keySelection=new Set([...keySelection].filter(id=>project.tracks.some(tr=>tr.keys.some(k=>k.id===id))));selectedTrack=Math.min(project.tracks.length-1,selectedTrack);if(!project.tracks[selectedTrack].keys.some(k=>k.id===selectedKey))selectedKey=project.tracks[selectedTrack].keys[0].id;position=Math.min(project.duration,position)}
 
 function selected(){return project.tracks[selectedTrack].keys.find(k=>k.id===selectedKey)}
 
@@ -69,23 +73,25 @@ const timePadding=18;
 function pxScale(){return Math.max(1,($('timelineScroll').clientWidth||800)-120-timePadding*2)/project.duration*Number($('zoom').value)/100}
 
 function render(){
+  const timelineViewport=$('timelineScroll'),savedScrollTop=timelineViewport.scrollTop,savedScrollLeft=timelineViewport.scrollLeft;
+  const trackFragment=document.createDocumentFragment();
 
   ensureLayout();resetSelection();if(!playing&&!starting)$('loop').checked=project.loop===true;$('currentShowName').textContent=project.name||'Untitled show';if(document.activeElement!==$('duration')&&durationDraft===null)$('duration').value=project.duration;$('scrub').max=project.duration;$('trackSelect').replaceChildren();
 
-  project.tracks.forEach((tr,i)=>{const option=document.createElement('option');option.value=i;option.textContent=tr.name;$('trackSelect').append(option)});$('trackSelect').value=selectedTrack;
+  project.tracks.forEach((tr,i)=>{const option=document.createElement('option');option.value=i;option.textContent=trackLabel(i);$('trackSelect').append(option)});$('trackSelect').value=selectedTrack;
 
   const width=project.duration*pxScale()+timePadding*2;$('timeline').style.width=(width+120)+'px';$('ruler').replaceChildren();
 
   const desiredTick=65/pxScale(),magnitude=10**Math.floor(Math.log10(desiredTick)),tick=[1,2,5,10].find(n=>n*magnitude>=desiredTick)*magnitude;for(let t=0;t<=project.duration;t+=tick){const span=document.createElement('span');span.textContent=Number(t.toFixed(3))+'s';span.style.left=(120+timePadding+t*pxScale())+'px';$('ruler').append(span)}
 
   const lastTick=$('ruler').lastElementChild,endX=120+timePadding+project.duration*pxScale();if(lastTick&&Math.abs(parseFloat(lastTick.style.left)-endX)>.1){if(endX-parseFloat(lastTick.style.left)<45)lastTick.remove();const end=document.createElement('span');end.textContent=project.duration+'s';end.style.left=endX+'px';end.style.transform='translateX(-100%)';$('ruler').append(end)}
-  $('trackRows').replaceChildren();
+
 
   project.tracks.forEach((track,index)=>{
 
     const row=document.createElement('div');row.className='track-row'+(index===selectedTrack?' selected':'');
 
-    const name=document.createElement('div');name.className='track-name';name.textContent=track.name;let preserveNameSelection=false;
+    const name=document.createElement('div');name.className='track-name';name.textContent=trackLabel(index);let preserveNameSelection=false;
     name.onpointerdown=e=>{$('timeline').focus({preventScroll:true});preserveNameSelection=e.shiftKey||e.ctrlKey||e.metaKey};
     name.onclick=e=>{if(preserveNameSelection||e.shiftKey||e.ctrlKey||e.metaKey)return;choose(index)};row.append(name);
 
@@ -130,11 +136,13 @@ function render(){
 
     content.ondblclick=e=>{if(e.shiftKey||e.ctrlKey||e.metaKey||e.target.closest('.key')||performance.now()<suppressTrackClickUntil)return;selectedTrack=index;position=snapTime((e.clientX-content.getBoundingClientRect().left-timePadding)/pxScale());addKey(position)};
 
-    $('trackRows').append(row);
+    trackFragment.append(row);
 
   });
 
-  drawWaveform(width);renderInspector();renderPreview();$('beatCount').textContent=`${project.beats?.length||0} beat markers`;$('audioName').textContent=project.audioName||'Audio is optional. Animate with keyframes and press Play, or import audio for music timing.';
+  $('trackRows').replaceChildren(trackFragment);
+  timelineViewport.scrollTop=savedScrollTop;timelineViewport.scrollLeft=savedScrollLeft;
+  renderDevices();$('output').querySelector('[value=group]').disabled=Boolean(project.controllers?.length);if(project.controllers?.length)$('output').value='effect-frames';drawWaveform(width);renderInspector();renderPreview();$('beatCount').textContent=`${project.beats?.length||0} beat markers`;$('audioName').textContent=project.audioName||'Audio is optional. Animate with keyframes and press Play, or import audio for music timing.';
 
   $('undo').disabled=!undoStack.length||playing;$('redo').disabled=!redoStack.length||playing;
 
@@ -142,7 +150,7 @@ function render(){
 
 function drawWaveform(width){$('audioLane').hidden=!audioBuffer||!project.audioRef;const c=$('waveform');c.width=Math.ceil(width);c.height=64;c.style.width=width+'px';const ctx=c.getContext('2d');ctx.strokeStyle='#8adbca';ctx.globalAlpha=.7;ctx.beginPath();const peaks=audioBuffer&&project.audioRef?(project.waveform||[]):[],audioDuration=project.audioDuration||project.duration;peaks.forEach((v,i)=>{const x=timePadding+i/peaks.length*audioDuration*pxScale();ctx.moveTo(x,32-v*27);ctx.lineTo(x,32+v*27)});ctx.stroke();ctx.globalAlpha=1;ctx.strokeStyle='#617f7655';for(const t of project.beats||[]){ctx.beginPath();ctx.moveTo(timePadding+t*pxScale(),0);ctx.lineTo(timePadding+t*pxScale(),64);ctx.stroke()}c.onclick=e=>seek(snapTime((e.clientX-c.getBoundingClientRect().left-timePadding)/pxScale()),true)}
 
-function renderInspector(){const k=selected();$('selectionTitle').textContent=project.tracks[selectedTrack].name;$('selectionCount').textContent=`${keySelection.size||1} selected`;$('keyTime').value=k.t;$('keyTime').max=project.duration;$('keyTime').disabled=k.t===0||playing;$('keyOn').checked=k.on;$('keyIntensity').value=k.intensity;$('intensityValue').textContent=Math.round(k.intensity)+'%';$('keyColor').value=hex(k.color);$('keyEase').value=k.ease;$('deleteKey').disabled=playing||starting;$('deleteSelectedKey').disabled=playing||starting;
+function renderInspector(){const k=selected();$('selectionTitle').textContent=trackLabel(selectedTrack);$('selectionCount').textContent=`${keySelection.size||1} selected`;$('keyTime').value=k.t;$('keyTime').max=project.duration;$('keyTime').disabled=k.t===0||playing;$('keyOn').checked=k.on;$('keyIntensity').value=k.intensity;$('intensityValue').textContent=Math.round(k.intensity)+'%';$('keyColor').value=hex(k.color);$('keyEase').value=k.ease;$('deleteKey').disabled=playing||starting;$('deleteSelectedKey').disabled=playing||starting;
 
   $('keyList').replaceChildren();for(const key of project.tracks[selectedTrack].keys){const b=document.createElement('button');b.textContent=key.t.toFixed(2)+'s';b.className=key.id===selectedKey?'active':'';b.onclick=()=>{selectedKey=key.id;seek(key.t);render()};$('keyList').append(b)}
 
@@ -150,7 +158,7 @@ function renderInspector(){const k=selected();$('selectionTitle').textContent=pr
 
 function renderClipboard(){const count=keyClipboard?.entries.length||0;$('pasteKeys').disabled=!count||playing||starting;$('clipboardStatus').textContent=count?`${count} copied · Paste to ${project.tracks[selectedTrack].name} at ${(pasteTime??keyClipboard.start).toFixed(3)}s${pasteTime===null?" · original timing":""}`:'No copied keys';for(const el of $('trackRows').querySelectorAll('.key'))el.classList.toggle('copied',!!keyClipboard?.entries.some(entry=>entry.key.id===el.dataset.key))}
 
-function renderPreview(){renderClipboard();if(!$('lamps').children.length){project.tracks.forEach((_,i)=>{const lamp=document.createElement('div');lamp.className='lamp';lamp.innerHTML='<div class="lamp-bulb"></div><div class="lamp-name"></div><div class="lamp-level"></div>';lamp.onclick=()=>choose(i);$('lamps').append(lamp)})}
+function renderPreview(){renderClipboard();if($('lamps').children.length!==project.tracks.length){$('lamps').replaceChildren();project.tracks.forEach((_,i)=>{const lamp=document.createElement('div');lamp.className='lamp';lamp.innerHTML='<div class="lamp-bulb"></div><div class="lamp-name"></div><div class="lamp-level"></div>';lamp.onclick=()=>choose(i);$('lamps').append(lamp)})}
 
   project.tracks.forEach((track,i)=>{const state=evaluateTrack(track,position),rgb=rgbOutput(state),lamp=$('lamps').children[i],color=hex(rgb);lamp.classList.toggle('selected',i===selectedTrack);lamp.children[0].style.background=color;lamp.children[0].style.boxShadow=`0 0 ${state.on?30:0}px ${color}80`;lamp.children[1].textContent=track.name;lamp.children[2].textContent=state.on?`${Math.round(state.intensity)}%`:'Off'});
 
@@ -272,7 +280,7 @@ $('addBeat').onclick=()=>edit(()=>{project.beats=[...new Set([...(project.beats|
 
 $('removeBeat').onclick=()=>edit(()=>{if(!project.beats?.length)return;const closest=project.beats.reduce((a,b)=>Math.abs(b-position)<Math.abs(a-position)?b:a);project.beats=project.beats.filter(t=>t!==closest)});
 
-$('generate').onclick=()=>{if(!project.beats?.length){notice('Add beat markers first.',true);return}const color=[...selected().color],level=selected().intensity||65;edit(()=>{project.tracks.forEach((tr,i)=>tr.keys=pulseKeys(project.beats,project.duration,($('pattern').value==='spatial'?spatialOrder().indexOf(i):i),($('pattern').value==='spatial'?'chase':$('pattern').value),color,level).map(k=>({...k,id:uid()})));selectedKey=project.tracks[selectedTrack].keys[0].id});notice('Pattern created. Edit any generated keyframe, or Undo to restore the earlier tracks.')};
+$('generate').onclick=()=>{if(!project.beats?.length){notice('Add beat markers first.',true);return}const color=[...selected().color],level=selected().intensity||65;edit(()=>{project.tracks.forEach((tr,i)=>tr.keys=pulseKeys(project.beats,project.duration,($('pattern').value==='spatial'?spatialOrder().indexOf(i):i),($('pattern').value==='spatial'?'chase':$('pattern').value),color,level,project.tracks.length).map(k=>({...k,id:uid()})));selectedKey=project.tracks[selectedTrack].keys[0].id});notice('Pattern created. Edit any generated keyframe, or Undo to restore the earlier tracks.')};
 
 function stopAudio(){if(audioSource){try{audioSource.stop()}catch{}audioSource=null}}
 
@@ -295,18 +303,18 @@ function renderDevices(){
  const host=$('deviceInventory');host.replaceChildren();const floods=deviceInventory.filter(d=>d.model==='H7062');
  $('devicesSummary').textContent=`${deviceInventory.length} controllers · ${floods.length} flood sets · ${floods.length*6} flood heads`;
  for(const d of deviceInventory){
-  const card=document.createElement('div');card.className='device-card'+(d.id===selectedDeviceId?' selected':'');
+  const card=document.createElement('div');card.className='device-card'+(project.controllers?.some(c=>c.id===d.id)?' selected':'');
   const title=document.createElement('strong');title.textContent=d.model==='H7062'?`Flood set · ${d.id.slice(-5)}`:d.model;
   const detail=document.createElement('span');detail.textContent=`${d.model} · ${d.ip}`;
   const info=document.createElement('span');info.textContent=d.model==='H7062'?'6 individually animated flood heads':'Discovered · control not supported yet';card.append(title,detail,info);
-  if(d.model==='H7062'){const button=document.createElement('button');button.textContent=d.id===selectedDeviceId?'Selected':'Use this flood set';button.disabled=d.id===selectedDeviceId||playing||starting||hardwareBusy;button.onclick=async()=>{try{await api('/api/devices/select',{id:d.id});++deviceGeneration;currentLightState=null;discoveredFlood=null;discoveryFailed=false;manualDirty=false;await refreshDevices();await refreshLightState();notice(`Selected flood set ${d.id.slice(-5)}. Timeline controls these six heads.`);}catch(e){notice(e.message,true)}};card.append(button);}host.append(card);
+  if(d.model==='H7062'){const added=project.controllers?.some(c=>c.id===d.id);const button=document.createElement('button');button.textContent=added?'Added':'Add to show';button.disabled=added||playing||starting||hardwareBusy;button.onclick=()=>{try{edit(()=>{ensureLayout();if(!project.controllers)project.controllers=[{id:selectedDeviceId||d.id,model:'H7062',name:'Set 1'}];if(project.controllers.some(c=>c.id===d.id))return;if(project.controllers.length>=16)throw Error('A show supports up to 16 flood sets.');const n=project.controllers.length;project.controllers.push({id:d.id,model:'H7062',name:`Set ${n+1}`});for(let h=0;h<6;h++){project.tracks.push({name:`Flood ${h+1}`,keys:[{id:uid(),t:0,on:false,intensity:0,color:[255,255,255],ease:'linear'}]});project.layout.fixtures.push({x:12+h*15.2,y:12+n*76/Math.max(1,n),angle:0});}});renderDevices();refreshLightState();notice(`Flood set added. ${project.tracks.length} lights in this show.`);}catch(e){notice(e.message,true)}};card.append(button);} host.append(card);
  }
 }
 async function refreshDevices(){const result=await api('/api/devices');deviceInventory=result.devices;selectedDeviceId=result.selectedId;discoveredFlood=deviceInventory.find(d=>d.id===selectedDeviceId)||null;renderDevices();renderStage();}
-$('discover').onclick=async()=>{const generation=++deviceGeneration;discoveryBusy=true;discoveryFailed=false;discoveredFlood=null;currentLightState=null;renderStage();try{$('discover').disabled=true;notice('Searching for Lights...');await api('/api/discover',{});if(generation!==deviceGeneration)return;await refreshDevices();discoveryFailed=!discoveredFlood;notice(discoveredFlood?`Found ${deviceInventory.length} controllers. Selected flood set ${discoveredFlood.id.slice(-5)} · six heads.`:deviceInventory.length?'Devices found. Select a supported flood set below.':'No lights replied. Check power and LAN control.',!deviceInventory.length)}catch(e){discoveryFailed=true;notice(e.message,true)}finally{discoveryBusy=false;$('discover').disabled=false;renderStage()}};
+$('discover').onclick=async()=>{const generation=++deviceGeneration;discoveryBusy=true;discoveryFailed=false;discoveredFlood=null;currentLightState=null;renderStage();try{$('discover').disabled=true;notice('Searching for Lights...');await api('/api/discover',{});if(generation!==deviceGeneration)return;await refreshDevices();discoveryFailed=!discoveredFlood;notice(discoveredFlood?`Found ${deviceInventory.length} controllers. Add flood sets to your show below.`:deviceInventory.length?'Devices found. Select a supported flood set below.':'No lights replied. Check power and LAN control.',!deviceInventory.length)}catch(e){discoveryFailed=true;notice(e.message,true)}finally{discoveryBusy=false;$('discover').disabled=false;renderStage()}};
 
 
-$('output').onchange=()=>{$('connectionStatus').textContent=$('output').value==='group'?'All lights follow Track 1. The other tracks are not sent.':$('output').value==='effect-frames'?'Local animation · plays your six tracks over Wi-Fi.':'Six tracks via Govee API · slow updates, not beat-accurate.'};
+$('output').onchange=()=>{$('connectionStatus').textContent=$('output').value==='group'?'All lights follow Track 1. The other tracks are not sent.':$('output').value==='effect-frames'?'Local animation · plays every added light over Wi-Fi.':'Six tracks via Govee API · slow updates, not beat-accurate.'};
 
 $('calibrate').onclick=async()=>{try{await halt(false);$('calibrationPanel').hidden=false;$('observed').checked=false;notice('Connecting for the separate-head test…');const state=await api('/api/calibrate',{});calibrationId=state.calibrationId;live=true;notice('API head test running. Colors arrive one by one, then hold for 8 seconds before restoration.');$('calibrationStatus').textContent='Test running…'}catch(e){notice(e.message,true)}};
 
@@ -361,7 +369,7 @@ async function init(){try{const saved=await api('/api/project');await verifyServ
 init().then(()=>refreshShows()).catch(e=>notice('Saved shows unavailable: '+e.message,true));
 
 
-function ensureLayout(){if(!project.layout)project.layout={fixtures:project.tracks.map((_,i)=>({x:12+i*15.2,y:68,angle:0}))};}
+function ensureLayout(){if(!project.layout)project.layout={fixtures:project.tracks.map((_,i)=>({x:12+(i%6)*15.2,y:project.tracks.length===6?68:12+Math.floor(i/6)*76/Math.max(1,Math.ceil(project.tracks.length/6)-1),angle:0}))};}
 function spatialOrder(){ensureLayout();return project.layout.fixtures.map((f,i)=>i).sort((a,b)=>project.layout.fixtures[a].x-project.layout.fixtures[b].x||project.layout.fixtures[a].y-project.layout.fixtures[b].y||a-b)}
 let placementDrag=null;
 function renderStage(){
@@ -370,12 +378,14 @@ function renderStage(){
   $('stageEmpty').querySelector('p').textContent=searching?'Checking your network for supported lights.':'Use Find lights with LAN Control enabled. Your layout appears after a flood controller responds.';
   container.hidden=!connected&&(basic||!virtualPreview);$('stageEmpty').hidden=connected||(!basic&&virtualPreview);$('showVirtualPreview').hidden=basic||connected;
   $('lamps').hidden=!connected&&!virtualPreview;
-  $('deviceLabel').textContent=searching&&!connected?'Searching for Lights...':connected?(discoveredFlood?`Flood set ${discoveredFlood.id.slice(-5)} · six heads`:'H7062 · controller responding · six physical heads'):(virtualPreview?'Saved layout · no flood controller connected':'No flood controller connected · saved tracks are retained');
+  $('deviceLabel').textContent=project.controllers?.length?`${project.controllers.length} flood sets · ${project.tracks.length} heads · ${connected?'connected':'one or more sets unavailable'}`:searching&&!connected?'Searching for Lights...':connected?(discoveredFlood?`Flood set ${discoveredFlood.id.slice(-5)} · six heads`:'H7062 · controller responding · six physical heads'):(virtualPreview?'Saved layout · no flood controller connected':'No flood controller connected · saved tracks are retained');
   $('manualTarget').disabled=!connected;$('manualApply').disabled=!connected;
   $('calibrate').disabled=!connected||hardwareBusy;
-  $('stageHeading').textContent=connected?'Light layout · 6 heads':'Light layout';
+  $('stageHeading').textContent=`Light layout · ${project.tracks.length} heads`;
+  const targets=$('manualTarget'),previous=targets.value;if(targets.options.length!==project.tracks.length+1){targets.replaceChildren(new Option('All added lights','all'));project.tracks.forEach((_,i)=>targets.add(new Option(trackLabel(i),String(i))));targets.value=[...targets.options].some(o=>o.value===previous)?previous:'all';}project.tracks.forEach((_,i)=>targets.options[i+1].textContent=trackLabel(i));$('stageMap').style.height=project.tracks.length>12?Math.min(900,Math.ceil(project.tracks.length/6)*72)+'px':'';
   $('liveColorStatus').textContent=searching&&!connected?'Searching for Lights...':connected?`${discoveredFlood?'H7062 connected':'H7062 controller responding'} · ${Object.values(currentLightState?.lastApplied||{}).some(s=>s)?'Icons show last applied colors; other heads unknown':'Individual colors unknown until applied'}`:'No flood controller connected. Use Find lights to discover your hardware.';
 
+  if(container.children.length!==project.tracks.length)container.replaceChildren();
   if(!container.children.length)project.tracks.forEach((_,i)=>{
     const button=document.createElement('button');button.className='stage-fixture';button.innerHTML='<span class="beam"></span><span class="fixture-core"></span><span class="fixture-number"></span><span class="fixture-caption"></span>';
     button.onpointerdown=e=>{if(playing||starting)return;e.preventDefault();selectedTrack=i;selectedKey=project.tracks[i].keys[0].id;placementDrag={index:i,startX:e.clientX,startY:e.clientY,backup:clone(project),moved:false};button.setPointerCapture(e.pointerId);render()};
@@ -383,8 +393,8 @@ function renderStage(){
     button.onkeydown=e=>{if(playing||starting)return;const delta={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]}[e.key];if(!delta)return;e.preventDefault();record();const f=project.layout.fixtures[i];f.x=Math.max(5,Math.min(95,f.x+delta[0]));f.y=Math.max(8,Math.min(92,f.y+delta[1]));changed()};
     container.append(button);
   });
-  project.tracks.forEach((track,i)=>{const f=project.layout.fixtures[i],button=container.children[i],state=(document.body.classList.contains('basic-view')?basicIconState(i):evaluateTrack(track,position)),color=hex(document.body.classList.contains('basic-view')?state.color:rgbOutput(state));button.style.left=f.x+'%';button.style.top=f.y+'%';button.style.setProperty('--fixture-color',color);button.classList.toggle('selected',document.body.classList.contains('basic-view')?($('manualTarget').value==='all'||Number($('manualTarget').value)===i):i===selectedTrack);button.children[0].style.transform=`rotate(${f.angle}deg)`;button.children[0].style.opacity=state.on?state.intensity/100*.6:0;button.children[2].textContent=i+1;button.children[3].textContent=track.name;button.setAttribute('aria-label',`${track.name}, X ${Math.round(f.x)}%, Y ${Math.round(f.y)}%, ${document.body.classList.contains('basic-view')&&state.unknown?'color unknown':state.on?Math.round(state.intensity)+'%':'off'}`)});
-  const f=project.layout.fixtures[selectedTrack];$('fixtureTitle').textContent=`Flood ${selectedTrack+1} placement`;
+  project.tracks.forEach((track,i)=>{const f=project.layout.fixtures[i],button=container.children[i],state=(document.body.classList.contains('basic-view')?basicIconState(i):evaluateTrack(track,position)),color=hex(document.body.classList.contains('basic-view')?state.color:rgbOutput(state));button.style.left=f.x+'%';button.style.top=f.y+'%';button.style.setProperty('--fixture-color',color);button.classList.toggle('selected',document.body.classList.contains('basic-view')?($('manualTarget').value==='all'||Number($('manualTarget').value)===i):i===selectedTrack);button.children[0].style.transform=`rotate(${f.angle}deg)`;button.children[0].style.opacity=state.on?state.intensity/100*.6:0;button.children[2].textContent=i+1;button.children[3].textContent=track.name;button.title=trackLabel(i);button.setAttribute('aria-label',`${track.name}, X ${Math.round(f.x)}%, Y ${Math.round(f.y)}%, ${document.body.classList.contains('basic-view')&&state.unknown?'color unknown':state.on?Math.round(state.intensity)+'%':'off'}`)});
+  const f=project.layout.fixtures[selectedTrack];$('fixtureTitle').textContent=trackLabel(selectedTrack);
   for(const [id,value] of [['fixtureName',project.tracks[selectedTrack].name],['fixtureX',Math.round(f.x)],['fixtureY',Math.round(f.y)]]){if(document.activeElement!==$(id))$(id).value=value;$(id).disabled=playing||starting}
   $('resetLayout').disabled=playing||starting;
 }
@@ -397,7 +407,7 @@ for(const [id,field,min,max] of [['fixtureX','x',5,95],['fixtureY','y',8,92]])$(
 
 $('manualIntensity').oninput=()=>{manualDirty=true;$('manualLevel').textContent=$('manualIntensity').value+'%';$('colorStateLabel').textContent='Pending change · click Apply';renderStage()};
 for(const [name,color] of [['Red','#ff0000'],['Green','#00ff00'],['Blue','#0000ff'],['Cyan','#00ffff'],['Pink','#ff0080'],['Amber','#ff8000'],['Purple','#a000ff'],['White','#ffffff']]){const b=document.createElement('button');b.type='button';b.textContent=name;b.style.setProperty('--swatch',color);b.onclick=()=>{setManualColor(color)};$('manualPresets').append(b)}
-$('manualForm').onsubmit=async e=>{e.preventDefault();$('manualApply').disabled=true;try{await halt(false);notice('Applying static look to your lights…');const target=$('manualTarget').value;const result=await api('/api/manual',{target:target==='all'?'all':Number(target),color:fromHex($('manualColor').value),intensity:Number($('manualIntensity').value),on:$('manualOn').checked});manualDirty=false;await refreshLightState();notice(target==='all'?'Static look applied to the whole set and confirmed by device readback.':`Flood ${Number(target)+1} command accepted by Govee. Changes can take a moment.`)}catch(error){notice(error.message,true)}finally{$('manualApply').disabled=!hasFlood()}};
+$('manualForm').onsubmit=async e=>{e.preventDefault();$('manualApply').disabled=true;try{await halt(false);notice('Applying static look to your lights…');const target=$('manualTarget').value;const ids=target==='all'?(project.controllers?.map(c=>c.id)||[selectedDeviceId]):[trackDevice(Number(target))];let applied=0;for(const deviceId of ids){try{await api('/api/manual',{deviceId,target:target==='all'?'all':Number(target)%6,color:fromHex($('manualColor').value),intensity:Number($('manualIntensity').value),on:$('manualOn').checked});applied++;}catch(e){throw Error(`${applied} of ${ids.length} sets applied. ${e.message}`)}}manualDirty=false;await refreshLightState();notice(target==='all'?'Static look applied to all added sets.':`Flood ${Number(target)+1} command accepted by Govee. Changes can take a moment.`)}catch(error){notice(error.message,true)}finally{$('manualApply').disabled=!hasFlood()}};
 
 function showPage(){const advanced=location.hash==='#advanced';(advanced?$('advancedLayoutHost'):$('basicLayoutHost')).append($('stageMap'));$('basicPage').hidden=advanced;$('advancedPage').hidden=!advanced;document.body.classList.toggle('basic-view',!advanced);$('pageTitle').textContent=advanced?'Make light move.':'Control your lights.';for(const [id,active] of [['basicLink',!advanced],['advancedLink',advanced]]){if(active)$(id).setAttribute('aria-current','page');else $(id).removeAttribute('aria-current')}if(!advanced&&!playing&&!starting&&!hardwareBusy&&$('actionStatus').textContent==='Ready. Choose an output, then press Play.')$('actionStatus').textContent='Choose a color and intensity, then Apply.';renderStage();if(advanced)render();}
 window.addEventListener('hashchange',()=>{showPage();if(!playing&&!starting&&!hardwareBusy&&['Choose a color and intensity, then Apply.','Ready. Choose an output, then press Play.'].includes($('actionStatus').textContent))$('actionStatus').textContent=location.hash==='#advanced'?'Ready. Choose an output, then press Play.':'Choose a color and intensity, then Apply.';});showPage();
@@ -414,9 +424,9 @@ $('colorWheel').onpointermove=e=>{if($('colorWheel').hasPointerCapture(e.pointer
 $('colorWheel').onpointerup=e=>{$('colorWheel').releasePointerCapture(e.pointerId)};
 $('manualColor').oninput=()=>{manualDirty=true;$('colorStateLabel').textContent='Pending change · click Apply';drawColorWheel();renderStage()};$('manualTarget').onchange=()=>{if($('manualTarget').value!=='all')selectedTrack=Number($('manualTarget').value);syncManualReadback();renderStage()};$('manualOn').onchange=()=>{manualDirty=true;renderStage()};drawColorWheel();
 
-function basicIconState(index){const last=currentLightState?.lastApplied?.[index];return last||{on:false,intensity:0,color:[40,50,65],unknown:true};}
-function syncManualReadback(){manualDirty=false;if(!currentLightState)return;const target=$('manualTarget').value,last=target==='all'?null:currentLightState.lastApplied?.[Number(target)];const c=currentLightState.controller;const s=last||(c?{on:c.onOff===1,intensity:c.brightness,color:['r','g','b'].map(k=>c.color?.[k]||0)}:null);if(!s)return;$('manualColor').value=hex(s.color);$('manualIntensity').value=s.intensity;$('manualLevel').textContent=s.intensity+'%';$('manualOn').checked=s.on;drawColorWheel();$('colorStateLabel').textContent=last?'Last applied to this flood':'Controller color · per-head readback unavailable';}
-async function refreshLightState(){if(lightStateBusy||discoveryBusy||discoveryFailed)return;const generation=deviceGeneration;lightStateBusy=true;renderStage();try{const result=await api('/api/light-state');if(generation!==deviceGeneration)return;currentLightState=result;lightStateBusy=false;await refreshDevices();if(!manualDirty)syncManualReadback();renderStage()}catch(error){if(generation===deviceGeneration){currentLightState=null;renderStage();$('liveColorStatus').textContent='State refresh failed: '+error.message;console.error('Light state refresh failed',error);}}finally{lightStateBusy=false;renderStage()}}
+function basicIconState(index){const last=stateFor(index)?.lastApplied?.[index%6];return last||{on:false,intensity:0,color:[40,50,65],unknown:true};}
+function syncManualReadback(){manualDirty=false;if(!currentLightState)return;const target=$('manualTarget').value,state=target==='all'?currentLightState:stateFor(Number(target)),last=target==='all'?null:state?.lastApplied?.[Number(target)%6];const c=state?.controller;const s=last||(c?{on:c.onOff===1,intensity:c.brightness,color:['r','g','b'].map(k=>c.color?.[k]||0)}:null);if(!s)return;$('manualColor').value=hex(s.color);$('manualIntensity').value=s.intensity;$('manualLevel').textContent=s.intensity+'%';$('manualOn').checked=s.on;drawColorWheel();$('colorStateLabel').textContent=last?'Last applied to this flood':'Controller color · per-head readback unavailable';}
+async function refreshLightState(){if(lightStateBusy||discoveryBusy||discoveryFailed)return;const generation=deviceGeneration;lightStateBusy=true;renderStage();try{const ids=project.controllers?.map(c=>c.id)||[selectedDeviceId];for(const id of ids){const result=await api('/api/light-state'+(id?'?deviceId='+encodeURIComponent(id):''));if(generation!==deviceGeneration)return;if(id)lightStates[id]=result;currentLightState=result;}lightStateBusy=false;await refreshDevices();if(!manualDirty)syncManualReadback();renderStage()}catch(error){if(generation===deviceGeneration){currentLightState=null;renderStage();$('liveColorStatus').textContent='State refresh failed: '+error.message;console.error('Light state refresh failed',error);}}finally{lightStateBusy=false;renderStage()}}
 $('showVirtualPreview').onclick=()=>{virtualPreview=true;renderStage()};
 refreshLightState();setInterval(()=>{if(document.body.classList.contains('basic-view'))refreshLightState()},2500);
 

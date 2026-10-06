@@ -10,7 +10,7 @@ import subprocess
 import ipaddress
 from pathlib import Path
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 from animation import validate_project, evaluate, rgb_output, segment_packet
 from govee_cloud import GoveeCloud
 from credential_store import CredentialStore
@@ -161,6 +161,18 @@ class Network:
         if not FLOOD_ID and len(supported) == 1: selected = supported[0]['id']
         return {'devices': devices, 'selectedId': selected}
 
+    def resolve_controllers(self, identifiers):
+        def lookup():
+            with self.condition:
+                return {d['id']:dict(d) for d in self.devices.values() if d['model'] == 'H7062'}
+        devices = lookup()
+        if any(identifier not in devices for identifier in identifiers):
+            self.discover()
+            devices = lookup()
+        missing = [identifier for identifier in identifiers if identifier not in devices]
+        if missing: raise ValueError('Project controller unavailable: ' + ', '.join(missing) + '. Find lights before playback.')
+        return [devices[identifier] for identifier in identifiers]
+
     def fresh_state(self, ip, timeout=2):
         before = time.time()
         self.send(ip, 'devStatus', {})
@@ -215,6 +227,11 @@ class Player:
             self.applied = json.loads(self.applied_file.read_text(encoding='utf-8'))
             if not isinstance(self.applied, list) or len(self.applied) != 6: self.applied = [None] * 6
         except (OSError, ValueError): self.applied = [None] * 6
+        self.applied_devices_file = DATA / 'applied-devices.json'
+        try:
+            self.applied_devices = json.loads(self.applied_devices_file.read_text(encoding='utf-8'))
+            if not isinstance(self.applied_devices, dict): self.applied_devices = {}
+        except (OSError, ValueError): self.applied_devices = {}
         try: self.confirmed = (lambda p: p.get('individualConfirmed') is True and p.get('protocol') == 'cloud-segments')(json.loads(self.profile_file.read_text()))
         except (OSError, ValueError): self.confirmed = False
 
@@ -275,12 +292,24 @@ class Player:
         project = validate_project(body.get('project'))
         mode = body.get('mode')
         if mode not in ('group', 'individual', 'calibration', 'cloud-calibration', 'individual-cloud', 'effect-frames'): raise ValueError('Invalid live output mode')
+        if project.get('controllers') and mode != 'effect-frames': raise ValueError('Bound controller projects require local animation output')
         if mode in ('individual', 'individual-cloud') and not self.confirmed: raise ValueError('Individual output requires a successful visual head test first')
         position = body.get('position', 0)
         if isinstance(position, bool) or not isinstance(position, (int, float)) or not 0 <= position < project['duration']: raise ValueError('Invalid playback position')
         if type(body.get('loop', False)) is not bool: raise ValueError('Invalid loop setting')
         with self.operation:
             self.stop()
+            if project.get('controllers'):
+                devices = self.net.resolve_controllers([c['id'] for c in project['controllers']])
+                # Read every controller before issuing any lighting change.
+                targets = [(device, self.net.fresh_state(device['ip'])) for device in devices]
+                self.cancel = threading.Event()
+                start_wall = time.time() + .35
+                with self.lock:
+                    self.state = {'playing':True, 'time':position, 'mode':mode, 'error':None, 'frames':0, 'startWall':start_wall, 'duration':project['duration'], 'restored':None, 'loop':body.get('loop',False), 'cycle':0, 'stopAt':project['duration'], 'controllerIds':[d['id'] for d in devices]}
+                self.thread = threading.Thread(target=self.run_controllers, args=(project, targets, position, start_wall), daemon=True)
+                self.thread.start()
+                return self.status()
             device = self.net.flood()
             snapshot = self.net.fresh_state(device['ip'])
             self.snapshot = snapshot
@@ -292,6 +321,43 @@ class Player:
             self.thread = threading.Thread(target=self.run, args=(project, mode, position, body.get('loop', False), start_wall), daemon=True)
             self.thread.start()
             return self.status()
+
+    def run_controllers(self, project, targets, position, start_wall):
+        start_mono = time.monotonic() + max(0, start_wall - time.time())
+        previous = [None] * len(targets)
+        try:
+            for device, _ in targets:
+                self.net.send(device['ip'], 'turn', {'value':1})
+                self.net.send(device['ip'], 'brightness', {'value':100})
+            if self.cancel.wait(max(0, start_mono - time.monotonic())): return
+            next_tick = start_mono
+            while not self.cancel.is_set():
+                absolute = position + max(0, time.monotonic() - start_mono)
+                with self.lock:
+                    if not self.state.get('loop') and absolute >= self.state['stopAt']: break
+                t = absolute % project['duration']
+                outputs = [rgb_output(state) for state in evaluate(project, t)]
+                for index, (device, _) in enumerate(targets):
+                    colors = outputs[index*6:(index+1)*6]
+                    if colors != previous[index]:
+                        self.net.send(device['ip'], 'ptReal', {'command':encode_timeline_frame(colors)})
+                        previous[index] = colors
+                with self.lock:
+                    self.state.update(time=t, cycle=int(absolute // project['duration']), frames=self.state['frames']+1)
+                next_tick += .1
+                now = time.monotonic()
+                if now > next_tick: next_tick += (int((now-next_tick)/.1)+1)*.1
+                if self.cancel.wait(max(0, next_tick-time.monotonic())): break
+        except Exception as error:
+            with self.lock: self.state['error'] = str(error)
+        finally:
+            failures = []
+            for device, snapshot in targets:
+                try: self.net.restore(device['ip'], snapshot)
+                except Exception as error: failures.append(device['id'] + ': ' + str(error))
+            with self.lock:
+                self.state.update(playing=False, restored=not failures)
+                if failures: self.state['error'] = 'Restore failed: ' + '; '.join(failures)
 
     def run(self, project, mode, position, loop, start_wall):
         last = [None] * 6
@@ -407,22 +473,29 @@ class Player:
         if type(level) is not int or not 0 <= level <= 100 or type(on) is not bool: raise ValueError('Invalid power or intensity')
         with self.operation:
             self.stop()
-            device = self.net.flood()
+            device = self.net.resolve_controllers([body['deviceId']])[0] if body.get('deviceId') else self.net.flood()
             if target == 'all':
                 state = {'onOff': int(on and level > 0), 'brightness': max(1, level), 'color':dict(zip(('r','g','b'),color)), 'colorTemInKelvin':0}
                 actual = self.net.restore(device['ip'], state)
-                self.remember_applied(target, color, level, on)
+                self.remember_applied(target, color, level, on, device['id'])
                 return {'applied':True, 'confirmed':True, 'state':actual}
             if not self.confirmed: raise ValueError('Run and confirm the separate-head test first')
             # Individual intensity is encoded in RGB; do not alter other heads' master brightness.
             rgb = [round(c * level / 100) if on else 0 for c in color]
-            CLOUD.segment_color(FLOOD_ID or self.net.flood()['id'], target, rgb)
-            self.remember_applied(target, color, level, on)
+            CLOUD.segment_color(device['id'], target, rgb)
+            self.remember_applied(target, color, level, on, device['id'])
             return {'applied':True, 'confirmed':False}
 
-    def remember_applied(self, target, color, level, on):
+    def remember_applied(self, target, color, level, on, device_id=None):
         value = {'color':list(color), 'intensity':level, 'on':on, 'appliedAt':time.time()}
         with self.lock:
+            if device_id:
+                values = self.applied_devices.setdefault(device_id, [None] * 6)
+                for index in (range(6) if target == 'all' else [target]): values[index] = dict(value)
+                temporary = self.applied_devices_file.with_suffix('.tmp')
+                temporary.write_text(json.dumps(self.applied_devices), encoding='utf-8')
+                temporary.replace(self.applied_devices_file)
+                if device_id != FLOOD_ID: return
             for index in (range(6) if target == 'all' else [target]): self.applied[index] = dict(value)
             temporary = self.applied_file.with_suffix('.tmp')
             temporary.write_text(json.dumps(self.applied), encoding='utf-8')
@@ -466,11 +539,13 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/api/status': self.respond(200, PLAYER.status()); return
         if path == '/api/devices': self.respond(200, NET.inventory()); return
         if path == '/api/light-state':
+            identifier = parse_qs(urlparse(self.path).query).get('deviceId', [None])[0]
+            applied = PLAYER.applied_devices.get(identifier, [None]*6) if identifier else PLAYER.applied
             try:
-                device = NET.flood()
+                device = NET.resolve_controllers([identifier])[0] if identifier else NET.flood()
                 state = NET.fresh_state(device['ip'])
-                self.respond(200, {'controller':state, 'device':{key:device[key] for key in ('id', 'model', 'ip')}, 'selectedId':device['id'], 'lastApplied':PLAYER.applied, 'readAt':time.time(), 'individualReadback':False})
-            except (ValueError, OSError): self.respond(200, {'controller':None, 'device':None, 'selectedId':NET.inventory()['selectedId'], 'lastApplied':PLAYER.applied, 'readAt':None, 'individualReadback':False})
+                self.respond(200, {'controller':state, 'device':{key:device[key] for key in ('id', 'model', 'ip')}, 'selectedId':device['id'], 'lastApplied':applied, 'readAt':time.time(), 'individualReadback':False})
+            except (ValueError, OSError): self.respond(200, {'controller':None, 'device':None, 'selectedId':identifier or NET.inventory()['selectedId'], 'lastApplied':applied, 'readAt':None, 'individualReadback':False})
             return
         if path == '/api/project':
             try: self.respond(200, json.loads((DATA / 'project.json').read_text()))

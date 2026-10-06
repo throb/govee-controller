@@ -130,7 +130,7 @@ class DiscoveryTests(unittest.TestCase):
 class ManualTests(unittest.TestCase):
     def test_whole_set_static_color_is_read_back(self):
         from unittest.mock import Mock
-        net=Mock();net.flood.return_value={'ip':'192.0.2.1'};net.restore.side_effect=lambda ip,state:state
+        net=Mock();net.flood.return_value={'ip':'192.0.2.1','id':server.FLOOD_ID};net.restore.side_effect=lambda ip,state:state
         with tempfile.TemporaryDirectory() as folder:
             from unittest.mock import patch
             with patch.object(server,'DATA',Path(folder)):
